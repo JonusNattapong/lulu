@@ -1,21 +1,21 @@
 import {
   type AgentConfig,
   type ToolResult,
-} from "../types.js";
+} from "../types/types.js";
 import {
   sendToProviderStream,
   toolResultToClaudeMessage,
   toolCallToClaudeMessage,
   type Usage,
-} from "./providers.js";
-import { BUILTIN_TOOLS, executeTool, loadPlugins, getPluginTools } from "./tools.js";
+} from "../providers/providers.js";
+import { BUILTIN_TOOLS, executeTool, loadPlugins, getPluginTools } from "../tools/tools.js";
 import { loadMCPServers, getMCPTools, callMCPTool, closeAllMCP } from "./mcp.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import pc from "picocolors";
-import { MemoryManager } from "./memory_v2.js";
+import { MemoryManager } from "./memory.js";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_HISTORY_MESSAGES = 12;

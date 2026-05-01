@@ -3,7 +3,7 @@ import { render, Text, Box, useInput, useApp, Newline } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import pc from 'picocolors';
-import type { Usage } from '../agent/providers.js';
+import type { Usage } from '../providers/providers.js';
 import { Markdown } from './Markdown.js';
 
 interface Message {

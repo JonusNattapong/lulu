@@ -26,26 +26,26 @@ gh release create v0.0.5 --title "v0.0.5" --notes "notes" --repo JonusNattapong/
 Lulu is an agentic AI assistant built on a tool-calling loop:
 
 ```
-User → src/index.ts (REPL) → src/agent/agent.ts
+User → src/cli/index.ts (REPL) → src/core/agent.ts
                       ↓
          ┌────────────┴────────────┐
          ↓                         ↓
-   src/agent/providers.ts    src/agent/tools.ts
+   src/providers/providers.ts    src/tools/tools.ts
          ↓                         ↓
-   src/providers.json     src/agent/tools_schema.json
+   src/providers/providers.json     src/tools/tools_schema.json
 ```
 
-- **Agent loop**: `src/agent/agent.ts` — 10 tool rounds max, auto-summarizes at 12 messages
-- **Providers**: `src/agent/providers.ts` — Claude (SDK) + OpenAI-compatible passthrough
-- **Tools**: Defined in `src/agent/tools_schema.json`, implemented in `src/agent/tools.ts` (switch statement)
-- **Config**: `src/config.ts` — loads `~/.lulu/config.json`, injects project memory + global skills into system prompt
-- **HTTP API**: `src/server.ts` — Elysia server (`POST /prompt`, `GET /history`)
+- **Agent loop**: `src/core/agent.ts` — 10 tool rounds max, auto-summarizes at 12 messages
+- **Providers**: `src/providers/providers.ts` — Claude (SDK) + OpenAI-compatible passthrough
+- **Tools**: Defined in `src/tools/tools_schema.json`, implemented in `src/tools/tools.ts` (switch statement)
+- **Config**: `src/core/config.ts` — loads `~/.lulu/config.json`, injects project memory + global skills into system prompt
+- **HTTP API**: `src/api/server.ts` — Elysia server (`POST /prompt`, `GET /history`)
 - **Storage**: `~/.lulu/` — `config.json`, `projects/[name]/memory.json`, `skills.json`, `plugins/`, `history`
 
 ## Tool & Provider Extension
 
 - **New tool**: Add JSON schema to `tools_schema.json`, implement `case` in `executeToolImpl()`, export helpers for tests, write tests in `src/__tests__/`, update `CHANGELOG.md`.
-- **New provider**: Extend `ModelProvider` type in `src/types.ts`, add to `providers.json` (default model), add `getBaseUrl()` + streaming `case` in `providers.ts`, add env key mapping.
+- **New provider**: Extend `ModelProvider` type in `src/types/types.ts`, add to `providers.json` (default model), add `getBaseUrl()` + streaming `case` in `providers.ts`, add env key mapping.
 
 ## Testing
 
@@ -61,15 +61,15 @@ Test files: `src/__tests__/*.test.ts`. Export non-internal helpers for testabili
 
 | File | Purpose |
 |---|---|
-| `src/agent/agent.ts` | Core agentic loop |
-| `src/agent/providers.ts` | Provider routing + streaming |
-| `src/agent/tools.ts` | Tool implementations |
-| `src/agent/tools_schema.json` | JSON tool definitions |
-| `src/agent/mcp.ts` | MCP protocol bridge |
-| `src/types.ts` | Shared TypeScript types |
-| `src/providers.json` | Provider defaults + system prompt |
-| `src/config.ts` | Config + memory injection |
-| `src/index.ts` | CLI REPL entry |
+| `src/core/agent.ts` | Core agentic loop |
+| `src/providers/providers.ts` | Provider routing + streaming |
+| `src/tools/tools.ts` | Tool implementations |
+| `src/tools/tools_schema.json` | JSON tool definitions |
+| `src/core/mcp.ts` | MCP protocol bridge |
+| `src/types/types.ts` | Shared TypeScript types |
+| `src/providers/providers.json` | Provider defaults + system prompt |
+| `src/core/config.ts` | Config + memory injection |
+| `src/cli/index.ts` | CLI REPL entry |
 
 ## Workspace Config
 

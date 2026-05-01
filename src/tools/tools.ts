@@ -1,5 +1,5 @@
-import type { ToolDef, ToolCall, ToolResult, AgentConfig } from "../types.js";
-import { sendToProvider } from "./providers.js";
+import type { ToolDef, ToolCall, ToolResult, AgentConfig } from "../types/types.js";
+import { sendToProvider } from "../providers/providers.js";
 import { execSync } from "child_process";
 import { homedir } from "os";
 import {
@@ -13,7 +13,7 @@ import path from "path";
 
 import { chromium } from "playwright";
 import TurndownService from "turndown";
-import { addMCPServer, getMCPServersLoaded } from "./mcp.js";
+import { addMCPServer, getMCPServersLoaded } from "../core/mcp.js";
 
 export const BUILTIN_TOOLS: ToolDef[] = JSON.parse(
   readFileSync(new URL("./tools_schema.json", import.meta.url), "utf-8"),
@@ -78,7 +78,7 @@ async function executeToolImpl(call: ToolCall, config: AgentConfig): Promise<str
       const fp = call.input.file_path as string;
       if (!existsSync(fp)) return `File not found: ${fp}`;
       const content = readFileSync(fp, "utf-8");
-      const lines = content.split("\n");
+      const lines = content.split(/\r?\n/);
       const offset = (call.input.offset as number) ?? 1;
       let limit = (call.input.limit as number) ?? lines.length;
       limit = Math.min(limit, lines.length - offset + 1);
@@ -308,7 +308,7 @@ export function searchFiles(
         if (globFilter && !wildcardMatch(entry.name, globFilter)) continue;
         try {
           const content = readFileSync(fullPath, "utf-8");
-          const lines = content.split("\n");
+          const lines = content.split(/\r?\n/);
           for (let i = 0; i < lines.length && results.length < 500; i++) {
             if (regex.test(lines[i])) {
               results.push(`${fullPath}:${i + 1}: ${lines[i].trim()}`);

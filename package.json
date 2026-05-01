@@ -16,10 +16,10 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "dev": "bun src/index.tsx",
-    "start": "bun dist/index.js",
-    "lulu": "bun src/index.tsx",
-    "server": "bun src/server.ts",
+    "dev": "bun src/cli/index.tsx",
+    "start": "bun dist/cli/index.js",
+    "lulu": "bun src/cli/index.tsx",
+    "server": "bun src/api/server.ts",
     "test": "bun test",
     "test:watch": "bun test --watch"
   },

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { ToolDef, ToolCall, ToolResult, MCPServer } from "../types.js";
+import type { ToolDef, ToolCall, ToolResult, MCPServer } from "../types/types.js";
 
 export interface MCPTool {
   server: string;

@@ -1,13 +1,23 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "path";
-import type { AgentConfig, ModelProvider, MCPServer } from "./types.js";
+import type { AgentConfig, ModelProvider, MCPServer } from "../types/types.js";
 
-const PROVIDERS_DATA = JSON.parse(
-  readFileSync(new URL("./providers.json", import.meta.url), "utf-8"),
+export const PROVIDERS_DATA = JSON.parse(
+  readFileSync(new URL("../providers/providers.json", import.meta.url), "utf-8"),
 );
 
 const CLAUDE_CONFIG_MAP: Record<string, string> = PROVIDERS_DATA.config_map;
+
+export function getAvailableProviders(): ModelProvider[] {
+  const claudeKeys = loadClaudeConfigKeys();
+  const mergedEnv: Record<string, string | undefined> = { ...claudeKeys, ...process.env };
+  
+  return (Object.keys(PROVIDERS_DATA.defaults) as ModelProvider[]).filter(p => {
+    const envKeyName = CLAUDE_CONFIG_MAP[p];
+    return !!mergedEnv[envKeyName];
+  });
+}
 
 function loadClaudeConfigKeys(): Record<string, string> {
   const configPath = path.join(homedir(), ".lulu", "config.json");

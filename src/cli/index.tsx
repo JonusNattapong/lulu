@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { render, useApp } from 'ink';
 import open from 'open';
-import { App } from './ui/App.js';
-import { loadConfig } from './config.js';
-import { runAgent } from './agent/agent.js';
+import { App } from '../ui/App.js';
+import { loadConfig } from '../core/config.js';
+import { runAgent } from '../core/agent.js';
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 
 interface Message {
@@ -22,10 +22,63 @@ const LuluLauncher = () => {
   const [totalUsage, setTotalUsage] = useState({ inputTokens: 0, outputTokens: 0, totalTokens: 0, costEstimate: 0 });
   const { exit } = useApp();
   
-  const config = loadConfig();
+  const [config, setConfig] = useState(loadConfig());
 
   const handleSendMessage = useCallback(async (text: string) => {
     if (!config) return;
+
+    if (text.startsWith('/provider')) {
+      const parts = text.split(' ');
+      if (parts.length === 1) {
+        // List available providers
+        const { getAvailableProviders } = await import('../core/config.js');
+        const available = getAvailableProviders();
+        setMessages(prev => [...prev, 
+          { role: 'user', content: text },
+          { role: 'system', content: `Available providers: ${available.join(', ')}\nCurrent provider: ${config.provider}` }
+        ]);
+      } else {
+        const newProvider = parts[1] as any;
+        const { PROVIDERS_DATA, getAvailableProviders } = await import('./config.js');
+        const available = getAvailableProviders();
+        
+        if (available.includes(newProvider)) {
+          const newConfig = loadConfig({ ...process.env, LULU_PROVIDER: newProvider });
+          if (newConfig) {
+            setConfig(newConfig);
+            setMessages(prev => [...prev, 
+              { role: 'user', content: text },
+              { role: 'system', content: `Switched to provider: ${newProvider}. Default model: ${newConfig.model}` }
+            ]);
+          }
+        } else {
+          setMessages(prev => [...prev, 
+            { role: 'user', content: text },
+            { role: 'system', content: `Error: Provider '${newProvider}' is not available. Available: ${available.join(', ')}` }
+          ]);
+        }
+      }
+      return;
+    }
+
+    if (text.startsWith('/model')) {
+      const parts = text.split(' ');
+      if (parts.length === 1) {
+        setMessages(prev => [...prev, 
+          { role: 'user', content: text },
+          { role: 'system', content: `Current model: ${config.model}` }
+        ]);
+      } else {
+        const newModel = parts[1];
+        const newConfig = { ...config, model: newModel };
+        setConfig(newConfig);
+        setMessages(prev => [...prev, 
+          { role: 'user', content: text },
+          { role: 'system', content: `Switched to model: ${newModel}` }
+        ]);
+      }
+      return;
+    }
 
     if (text === '/dashboard') {
       open('http://localhost:3001');

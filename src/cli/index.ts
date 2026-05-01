@@ -4,8 +4,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
-import { loadConfig } from "./config.js";
-import { runAgent } from "./agent/agent.js";
+import { loadConfig } from "../core/config.js";
+import { runAgent } from "../core/agent.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 import pc from "picocolors";
 
@@ -163,6 +163,41 @@ async function main(): Promise<void> {
 
       if (inputLine === "/help") {
         printHelp();
+        continue;
+      }
+
+      if (inputLine.startsWith("/provider")) {
+        const parts = inputLine.split(" ");
+        const { getAvailableProviders } = await import("../core/config.js");
+        const available = getAvailableProviders();
+        
+        if (parts.length === 1) {
+          console.log(pc.cyan(`\nAvailable providers: ${available.join(", ")}`));
+          console.log(pc.cyan(`Current provider: ${config.provider}`));
+        } else {
+          const newProvider = parts[1] as any;
+          if (available.includes(newProvider)) {
+            const newConfig = loadConfig({ ...process.env, LULU_PROVIDER: newProvider });
+            if (newConfig) {
+              config = newConfig;
+              console.log(pc.green(`\nSwitched to provider: ${newProvider}. Default model: ${newConfig.model}`));
+            }
+          } else {
+            console.log(pc.red(`\nError: Provider '${newProvider}' is not available. Available: ${available.join(", ")}`));
+          }
+        }
+        continue;
+      }
+
+      if (inputLine.startsWith("/model")) {
+        const parts = inputLine.split(" ");
+        if (parts.length === 1) {
+          console.log(pc.cyan(`\nCurrent model: ${config.model}`));
+        } else {
+          const newModel = parts[1];
+          config = { ...config, model: newModel };
+          console.log(pc.green(`\nSwitched to model: ${newModel}`));
+        }
         continue;
       }
 

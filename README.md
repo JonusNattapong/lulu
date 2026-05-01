@@ -31,6 +31,22 @@ Lulu is an **Autonomous AI Coding Assistant** designed for local development. It
 - [Bun](https://bun.sh/) (Recommended) or Node.js 22+
 
 ### 2. Installation
+
+**Quick Install (Recommended):**
+
+- **Linux/macOS:**
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/JonusNattapong/lulu/main/scripts/install.sh | bash
+  ```
+  (Or clone and run `./scripts/install.sh`)
+
+- **Windows (PowerShell):**
+  ```powershell
+  irm https://raw.githubusercontent.com/JonusNattapong/lulu/main/scripts/install.ps1 | iex
+  ```
+  (Or clone and run `.\scripts\install.ps1`)
+
+**Manual Install:**
 ```sh
 git clone https://github.com/JonusNattapong/lulu.git
 cd lulu

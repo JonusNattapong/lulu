@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { pipeline } from "@xenova/transformers";
-import type { ToolDef, ToolCall, ToolResult, AgentConfig, ModelProvider } from "../types.js";
+import type { ToolDef, ToolCall, ToolResult, AgentConfig, ModelProvider } from "../types/types.js";
 
 // Re-export for convenience
 export type { ToolDef, ToolCall, ToolResult };

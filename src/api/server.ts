@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { loadConfig } from "./config.js";
-import { runAgent } from "./agent/agent.js";
+import { loadConfig } from "../core/config.js";
+import { runAgent } from "../core/agent.js";
 import { homedir } from "node:os";
 import path from "node:path";
 import { readFileSync, existsSync } from "node:fs";
@@ -9,8 +9,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { swagger } from "@elysiajs/swagger";
 
 import { staticPlugin } from "@elysiajs/static";
-import { getMCPServersLoaded } from "./agent/mcp.js";
-import { getPluginTools } from "./agent/tools.js";
+import { getMCPServersLoaded } from "../core/mcp.js";
+import { getPluginTools } from "../tools/tools.js";
 
 const app = new Elysia()
   .use(cors())

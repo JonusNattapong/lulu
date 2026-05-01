@@ -1,10 +1,10 @@
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import * as sqliteVec from "sqlite-vec";
 import path from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";
-import { getEmbedding } from "./providers.js";
-import type { AgentConfig } from "../types.js";
+import { getEmbedding } from "../providers/providers.js";
+import type { AgentConfig } from "../types/types.js";
 
 export interface MemoryEntry {
   content: string;
@@ -12,7 +12,7 @@ export interface MemoryEntry {
 }
 
 export class MemoryManager {
-  private db: Database.Database;
+  private db: Database;
 
   constructor(projectName: string) {
     const projectDir = path.join(homedir(), ".lulu", "projects", projectName);
@@ -22,7 +22,8 @@ export class MemoryManager {
     this.db = new Database(dbPath);
     
     // Load sqlite-vec extension
-    sqliteVec.load(this.db);
+    const vecPath = sqliteVec.getLoadablePath();
+    this.db.loadExtension(vecPath);
     
     this.init();
   }
@@ -50,8 +51,8 @@ export class MemoryManager {
       const { embedding } = await getEmbedding(config, content);
       
       const insert = this.db.prepare('INSERT INTO memories (content, metadata) VALUES (?, ?)');
-      const result = insert.run(content, JSON.stringify(metadata));
-      const rowid = result.lastInsertRowid;
+      insert.run(content, JSON.stringify(metadata));
+      const rowid = (this.db as any).lastInsertRowid;
 
       const insertVec = this.db.prepare('INSERT INTO vec_memories_local (rowid, embedding) VALUES (?, ?)');
       insertVec.run(rowid, new Float32Array(embedding));

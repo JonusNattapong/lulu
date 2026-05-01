@@ -18,3 +18,4 @@ yarn-error.log*
 .bun/
 *.local
 *.tsbuildinfo
+scratch/
