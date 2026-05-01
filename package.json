@@ -1,0 +1,30 @@
+{
+  "name": "luluai",
+  "version": "0.0.1",
+  "description": "A small personal AI assistant for working with local files.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "lulu": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    ".env.example",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "start": "node dist/index.js",
+    "lulu": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}
