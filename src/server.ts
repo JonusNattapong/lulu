@@ -64,6 +64,6 @@ const app = new Elysia()
       context: t.Optional(t.Array(t.Any()))
     })
   })
-  .listen(8080);
+  .listen(19456);
 
-console.log(`🦊 Elysia is running at http://localhost:8080`);
+console.log(`🦊 Elysia is running at http://localhost:19456`);

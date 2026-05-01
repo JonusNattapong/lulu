@@ -23,7 +23,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = 'http://localhost:19456';
 
 interface Status {
   status: string;
