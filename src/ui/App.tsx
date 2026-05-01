@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { render, Text, Box, useInput, useApp } from 'ink';
+import { render, Text, Box, useInput, useApp, Newline } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import pc from 'picocolors';
 import type { Usage } from '../agent/providers.js';
+import { Markdown } from './Markdown.js';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -26,18 +27,7 @@ export const App: React.FC<AppProps> = ({ onSendMessage, messages, currentRespon
     if (key.escape) exit();
   });
 
-  const formatOutput = (text: string) => {
-    // Simple inline formatting for Ink
-    return text.split(/(\*\*.*?\*\*|`.*?`)/).map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <Text key={i} bold color="yellow">{part.slice(2, -2)}</Text>;
-      }
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return <Text key={i} color="magenta">{part.slice(1, -1)}</Text>;
-      }
-      return <Text key={i}>{part}</Text>;
-    });
-  };
+  // use Markdown component instead of formatOutput
 
   const handleSubmit = async (value: string) => {
     setQuery('');
@@ -70,19 +60,25 @@ export const App: React.FC<AppProps> = ({ onSendMessage, messages, currentRespon
       <Box flexDirection="column" marginBottom={1}>
         {messages.map((msg, index) => (
           <Box key={index} marginBottom={1} flexDirection="column">
-            <Box>
+            <Box marginBottom={msg.content.includes('\n') ? 1 : 0}>
               <Text color={msg.role === 'user' ? 'blue' : 'green'} bold>
                 {msg.role === 'user' ? '> ' : 'Lulu: '}
               </Text>
-              <Text>{msg.role === 'assistant' ? formatOutput(msg.content) : msg.content}</Text>
+            </Box>
+            <Box marginLeft={1}>
+              <Markdown content={msg.content} />
             </Box>
           </Box>
         ))}
 
         {currentResponse && (
-          <Box marginBottom={1}>
-            <Text color="green" bold>Lulu: </Text>
-            <Text>{formatOutput(currentResponse)}</Text>
+          <Box marginBottom={1} flexDirection="column">
+            <Box marginBottom={1}>
+              <Text color="green" bold>Lulu: </Text>
+            </Box>
+            <Box marginLeft={1}>
+              <Markdown content={currentResponse} />
+            </Box>
           </Box>
         )}
       </Box>
