@@ -5,12 +5,19 @@ All notable changes to the Lulu project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- (new changes here)
+
+## [v0.0.7] - 2026-05-01
+
+### Added
 - **Edit Command:** Added `/edit` command for batch file editing with AI-suggested changes.
 - **Message History Navigation:** Reverse chronological message history with keyboard navigation in the terminal UI.
 - **Status Bar:** Real-time status bar showing model, provider, and session info in the terminal UI.
+- **Telegram Pairing Wizard:** Added `telegram:setup` to validate a bot token, approve a Telegram chat from the host terminal, and persist approved bindings in `~/.lulu/telegram.json`.
 
 ### Changed
 - Improved README with a more professional technical overview.
+
 
 ## [v0.0.6] - 2026-05-02
 
