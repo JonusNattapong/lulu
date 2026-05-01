@@ -1,0 +1,63 @@
+# Lulu Desktop
+
+Lulu Desktop is the coworker-style app shell for the local Lulu runtime. It uses the existing dashboard UI and opens it in Electron.
+
+## Fast Dev Mode
+
+Use this while developing Lulu:
+
+```sh
+bun run desktop
+```
+
+This starts:
+
+- Lulu API on `http://127.0.0.1:19456`
+- dashboard dev server on `http://127.0.0.1:5173`
+- Electron window pointed at the dashboard
+
+This is the fastest path because it does not package the app.
+
+## Use Existing Servers
+
+If the API or dashboard is already running:
+
+```sh
+LULU_DESKTOP_START_API=false bun run desktop
+```
+
+```sh
+LULU_DESKTOP_START_DASHBOARD=false bun run desktop
+```
+
+If the dashboard is at a different URL:
+
+```sh
+LULU_DASHBOARD_URL=http://127.0.0.1:5173 bun run desktop
+```
+
+## Package Mode
+
+Use this only when you want a desktop artifact:
+
+```sh
+npm run desktop:pack
+```
+
+Create an installer/package for the current OS:
+
+```sh
+npm run desktop:dist
+```
+
+Packaging runs TypeScript and Vite production builds, so it is slower than dev mode.
+
+## WSL Note
+
+Building from `/mnt/c` or `/mnt/d` can be slow because WSL is crossing the Windows filesystem boundary. For faster packaging, clone the repo under the Linux filesystem, for example:
+
+```sh
+~/projects/lulu
+```
+
+Dev mode is usually fine from `/mnt/d`; packaging is where the slowdown is most noticeable.

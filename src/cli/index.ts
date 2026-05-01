@@ -6,7 +6,8 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { loadConfig } from "../core/config.js";
 import { runAgent } from "../core/agent.js";
-import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
+import { describePrompt } from "../core/prompt.js";
+import { SessionManager } from "../core/session.js";
 import pc from "picocolors";
 
 const HISTORY_FILE = path.join(homedir(), ".lulu", "history");
@@ -102,14 +103,21 @@ Usage:
 
 Interactive Commands:
   /curate       Trigger the Curator to optimize your skill library
+  /prompt       Show active prompt layers
+  /session      Show active session metadata
+  /new, /reset  Start a fresh session
   /exit, /quit  End the interactive session
   /help         Show this help message
 
 Environment:
   LULU_PROVIDER          claude (default), openai, google, deepseek, etc.
   LULU_MODEL             Override default model
+  LULU_PROMPT_PROFILE    Load ~/.lulu/prompts/<profile>.md as a prompt profile
   LULU_ALLOW_WRITE=true  Enable file modifications
   LULU_ALLOW_COMMAND=true Enable shell commands
+  LULU_ALLOW_TMUX=true   Enable built-in tmux tools
+  LULU_TELEGRAM_BOT_TOKEN Telegram bot token for 'bun run telegram'
+  LULU_TELEGRAM_ALLOWED_CHAT_IDS Comma-separated allowed chat IDs
 
 Global Configuration:
   Stored in ~/.lulu/config.json
@@ -150,7 +158,8 @@ async function main(): Promise<void> {
 
   const history = loadHistory();
   const rl = readline.createInterface({ input, output, history });
-  const context: MessageParam[] = [];
+  const sessionManager = new SessionManager();
+  let session = sessionManager.getOrCreate({ channel: "cli", subjectId: "default", title: "Interactive CLI", config });
 
   console.log(pc.green("Ready. Type /exit to quit."));
 
@@ -163,6 +172,24 @@ async function main(): Promise<void> {
 
       if (inputLine === "/help") {
         printHelp();
+        continue;
+      }
+
+      if (inputLine === "/session") {
+        console.log(pc.cyan("\n" + sessionManager.describe(session.id)));
+        continue;
+      }
+
+      if (inputLine === "/new" || inputLine === "/reset") {
+        const reset = sessionManager.reset(session.id);
+        if (reset) session = reset;
+        console.log(pc.green("\nStarted a fresh CLI session."));
+        continue;
+      }
+
+      if (inputLine === "/prompt") {
+        const { loadPromptBuild } = await import("../core/config.js");
+        console.log(pc.cyan("\n" + describePrompt(loadPromptBuild(process.env))));
         continue;
       }
 
@@ -203,12 +230,13 @@ async function main(): Promise<void> {
 
       if (inputLine === "/curate") {
         console.log(pc.yellow("\n[Curator] Analyzing and optimizing your skill library..."));
-        await runAgent(config, "Please curate my skills library now using curate_skills tool.", context, (t) => process.stdout.write(formatOutput(t)));
+        const result = await runAgent(config, "Please curate my skills library now using curate_skills tool.", session.messages, (t) => process.stdout.write(formatOutput(t)));
+        session = sessionManager.saveMessages(session.id, result.messages, config);
         continue;
       }
 
-      const result = await runAgent(config, inputLine, context, (t) => process.stdout.write(formatOutput(t)));
-      context.splice(0, context.length, ...result.messages);
+      const result = await runAgent(config, inputLine, session.messages, (t) => process.stdout.write(formatOutput(t)));
+      session = sessionManager.saveMessages(session.id, result.messages, config);
     }
   } finally {
     saveHistory((rl as any).history ?? []);

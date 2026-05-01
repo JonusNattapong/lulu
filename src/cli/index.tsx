@@ -5,17 +5,18 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { existsSync, rm } from 'node:fs';
 import { App } from '../ui/App.js';
-import { loadConfig } from '../core/config.js';
-import { runAgent } from '../core/agent.js';
-import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
+import { SessionManager, type SessionRecord } from '../core/session.js';
+import { ConfigResolver } from '../core/config_resolver.js';
+import { commandRegistry } from '../core/commands.js';
+import { detectCapabilities, formatCapabilities } from '../core/capabilities.js';
 
 // One-shot mode: no Ink, just plain text output
 const args = process.argv.slice(2);
 const initialPrompt = args.join(' ').trim();
 
 if (initialPrompt) {
-  const config = loadConfig(process.env);
-  if (!config) {
+  const config = ConfigResolver.resolve({ env: process.env });
+  if (!config.apiKey) {
     console.error("No API key found. Run 'lulu' without arguments to set up.");
     process.exit(1);
   }
@@ -42,72 +43,50 @@ function startInteractive() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [currentResponse, setCurrentResponse] = useState('');
     const [isThinking, setIsThinking] = useState(false);
-    const [context, setContext] = useState<MessageParam[]>([]);
+    const [sessionManager] = useState(() => new SessionManager());
     const [totalUsage, setTotalUsage] = useState({ inputTokens: 0, outputTokens: 0, totalTokens: 0, costEstimate: 0 });
     const { exit } = useApp();
     
-    const [config, setConfig] = useState(loadConfig());
+    const [config, setConfig] = useState(() => ConfigResolver.resolve());
+    const [session, setSession] = useState<SessionRecord | null>(() => {
+      const initialConfig = ConfigResolver.resolve();
+      return initialConfig
+        ? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config: initialConfig })
+        : null;
+    });
+
+    useEffect(() => {
+      if (!config) return;
+      setSession(sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config }));
+    }, [config, sessionManager]);
 
     const handleSendMessage = useCallback(async (text: string) => {
       if (!config) return;
 
-      if (text.startsWith('/provider')) {
-        const parts = text.split(' ');
-        if (parts.length === 1) {
-          const { getAvailableProviders } = await import('../core/config.js');
-          const available = getAvailableProviders();
-          setMessages(prev => [...prev, 
-            { role: 'user', content: text },
-            { role: 'system', content: `Available providers: ${available.join(', ')}\nCurrent provider: ${config.provider}` }
-          ]);
-        } else {
-          const newProvider = parts[1] as any;
-          const { getAvailableProviders } = await import('../core/config.js');
-          const available = getAvailableProviders();
-          
-          if (available.includes(newProvider)) {
-            const newConfig = loadConfig({ ...process.env, LULU_PROVIDER: newProvider });
-            if (newConfig) {
-              setConfig(newConfig);
-              setMessages(prev => [...prev,
-                { role: 'user', content: text },
-                { role: 'system', content: `Switched to provider: ${newProvider} (model: ${newConfig.model})` }
-              ]);
-            }
-          } else {
-            setMessages(prev => [...prev,
-              { role: 'user', content: text },
-              { role: 'system', content: `Provider '${newProvider}' not available. Available: ${available.join(', ')}` }
-            ]);
-          }
-        }
+      const activeSession = session ?? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config });
+
+      // Central Command Handling
+      const cmdResult = await commandRegistry.handle(text, { 
+        sessionId: activeSession.id, 
+        channel: 'cli', 
+        config, 
+        sessionManager 
+      });
+
+      if (cmdResult) {
+        setMessages(prev => [...prev, 
+          { role: 'user', content: text },
+          { role: 'system', content: cmdResult.text }
+        ]);
+        // Update local state if session changed (e.g. /new)
+        setSession(sessionManager.get(activeSession.id));
         return;
       }
 
-      if (text.startsWith('/model')) {
-        const parts = text.split(' ');
-        if (parts.length === 1) {
-          setMessages(prev => [...prev,
-            { role: 'user', content: text },
-            { role: 'system', content: `Current model: ${config.model}` }
-          ]);
-        } else {
-          const newModel = parts[1];
-          setConfig({ ...config, model: newModel });
-          setMessages(prev => [...prev,
-            { role: 'user', content: text },
-            { role: 'system', content: `Switched to model: ${newModel}` }
-          ]);
-        }
-        return;
-      }
-
+      // Legacy/Special CLI Commands (Dashboard, Edit)
       if (text === '/dashboard') {
         open('http://localhost:19456');
-        setMessages(prev => [...prev,
-          { role: 'user', content: text },
-          { role: 'system', content: 'Opening dashboard at http://localhost:19456 in your default browser...' }
-        ]);
+        setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'system', content: 'Opening dashboard...' }]);
         return;
       }
 
@@ -145,13 +124,14 @@ function startInteractive() {
       ]);
 
       try {
-        const result = await runAgent(config, text, context, (chunk) => {
+        const activeSession = session ?? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config });
+        const result = await runAgent(config, text, activeSession.messages, (chunk) => {
           setCurrentResponse(prev => prev + chunk);
         });
         
         setMessages(prev => [...prev, { role: 'assistant', content: result.finalText || currentResponse }]);
         setCurrentResponse('');
-        setContext(result.messages);
+        setSession(sessionManager.saveMessages(activeSession.id, result.messages, config));
         setTotalUsage(prev => ({
           inputTokens: prev.inputTokens + result.usage.inputTokens,
           outputTokens: prev.outputTokens + result.usage.outputTokens,
@@ -163,7 +143,7 @@ function startInteractive() {
       } finally {
         setIsThinking(false);
       }
-    }, [config, context]);
+    }, [config, session, sessionManager]);
 
     if (!config) {
       return null;

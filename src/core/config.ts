@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "path";
 import type { AgentConfig, ModelProvider, MCPServer } from "../types/types.js";
+import { buildSystemPrompt, type PromptBuildResult } from "./prompt.js";
+import { initSecrets, registerSecret } from "./secrets.js";
 
 export const PROVIDERS_DATA = JSON.parse(
   readFileSync(new URL("../providers/providers.json", import.meta.url), "utf-8"),
@@ -19,7 +21,7 @@ export function getAvailableProviders(): ModelProvider[] {
   });
 }
 
-function loadClaudeConfigKeys(): Record<string, string> {
+export function loadClaudeConfigKeys(): Record<string, string> {
   const configPath = path.join(homedir(), ".lulu", "config.json");
   try {
     if (!existsSync(configPath)) return {};
@@ -99,10 +101,7 @@ export function _parsePositiveInt(value: string | undefined, fallback: number): 
 export function _loadClaudeConfigKeys(): Record<string, string> { return loadClaudeConfigKeys(); }
 export function _loadMCPServers(): MCPServer[] { return loadMCPServers(); }
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | null {
-  const claudeKeys = loadClaudeConfigKeys();
-  const mergedEnv: Record<string, string | undefined> = { ...claudeKeys, ...env };
-
+export function detectProject(): { projectName: string; projectRoot: string } {
   const projectRoot = process.cwd();
   let projectName = path.basename(projectRoot);
 
@@ -115,6 +114,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | 
   } catch {
     // Ignore
   }
+
+  return { projectName, projectRoot };
+}
+
+export function loadPromptBuild(env: NodeJS.ProcessEnv = process.env): PromptBuildResult {
+  const { projectName, projectRoot } = detectProject();
+  return buildSystemPrompt({
+    basePrompt: DEFAULT_SYSTEM_PROMPT,
+    env,
+    projectName,
+    projectRoot,
+  });
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | null {
+  const claudeKeys = loadClaudeConfigKeys();
+  const mergedEnv: Record<string, string | undefined> = { ...claudeKeys, ...env };
+
+  // Register all known secrets for automatic redaction
+  initSecrets();
+  for (const val of Object.values(mergedEnv)) {
+    if (val) registerSecret(val);
+  }
+  for (const val of Object.values(claudeKeys)) {
+    if (val) registerSecret(val);
+  }
+
+  const { projectName, projectRoot } = detectProject();
 
   const providers = {} as Record<ModelProvider, { key?: string; defaultModel: string }>;
   for (const [p, data] of Object.entries(PROVIDERS_DATA.defaults)) {
@@ -132,35 +159,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | 
   // Load MCP servers
   const mcpServers = loadMCPServers();
 
-  let systemPrompt = env.LULU_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
-  
-  // Inject Project Memory
-  const memoryPath = path.join(homedir(), ".lulu", "projects", projectName, "memory.json");
-  if (existsSync(memoryPath)) {
-    try {
-      const memoryRaw = readFileSync(memoryPath, "utf-8");
-      if (memoryRaw.trim()) {
-        const memory = JSON.parse(memoryRaw);
-        systemPrompt += `\n\n# Project Memory (${projectName}):\n${JSON.stringify(memory, null, 2)}`;
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  // Inject Global Skills
-  const skillsPath = path.join(homedir(), ".lulu", "skills.json");
-  if (existsSync(skillsPath)) {
-    try {
-      const skillsRaw = readFileSync(skillsPath, "utf-8");
-      if (skillsRaw.trim()) {
-        const skills = JSON.parse(skillsRaw);
-        systemPrompt += `\n\n# Global Skills (Learned Patterns):\n${JSON.stringify(skills, null, 2)}`;
-      }
-    } catch {
-      // Ignore
-    }
-  }
+  const { systemPrompt } = loadPromptBuild(env);
 
   if (!config || !config.key) {
     // If selected provider is not available, try to find the first one that has a key
@@ -179,6 +178,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | 
       projectName,
       projectRoot,
       mcpServers,
+      channel: (env.LULU_CHANNEL as any) || "cli",
     };
   }
 
@@ -191,6 +191,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | 
     projectName,
     projectRoot,
     mcpServers,
+    channel: (env.LULU_CHANNEL as any) || "cli",
   };
 }
 

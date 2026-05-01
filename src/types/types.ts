@@ -52,4 +52,5 @@ export interface AgentConfig {
   projectName?: string;
   projectRoot?: string;
   mcpServers?: MCPServer[];
+  channel?: "cli" | "api" | "telegram" | "dashboard" | "system";
 }

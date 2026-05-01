@@ -1,49 +1,109 @@
 # Project Architecture: Lulu
 
-Lulu is an autonomous AI agent designed for local development and repository interaction. This document outlines the system design and core flows.
+Lulu is a local-first autonomous agent for development, repository work, and chat-based control surfaces such as CLI, API, dashboard, and Telegram.
 
 ## System Overview
-Lulu operates on an agentic loop pattern. It doesn't just respond to prompts; it reasons about the environment and uses tools to achieve goals.
+
+Lulu follows an agent loop, but the loop is only one part of the runtime. Durable state, commands, tools, project context, and events are centralized so every channel behaves like the same agent instead of separate frontends.
 
 ```mermaid
 graph TD
-    User[User Input] --> REPL[REPL / CLI Entry]
-    REPL --> Agent[Agent Loop - src/agent/agent.ts]
-    Agent --> Provider[AI Provider - src/agent/providers.ts]
-    Provider --> Tools[Tool Execution - src/agent/tools.ts]
-    Tools --> Agent
-    Agent --> User[Final Response]
+    User[User] --> Channel[CLI / API / Dashboard / Telegram]
+    Channel --> Commands[Command Registry]
+    Channel --> Sessions[SessionManager]
+    Commands --> Sessions
+    Sessions --> Agent[Agent Loop]
+    Agent --> Prompt[Prompt Builder]
+    Agent --> Provider[Provider Layer]
+    Agent --> Tools[Tool Registry]
+    Tools --> Policy[Policy Engine]
+    Tools --> Events[Event Bus]
+    Agent --> Events
+    Events --> Channel
+    Agent --> Memory[Memory / Tasks / Project Context]
 ```
 
 ## Core Modules
 
-### 1. API Server (`src/server.ts`)
-A high-performance web server built with **Elysia** and **Bun**. It exposes endpoints for:
-- `POST /prompt`: Trigger the AI agent.
-- `GET /history`: Retrieve global conversation logs.
+### Agent Loop (`src/core/agent.ts`)
 
-### 2. Entry Point (`src/index.ts`)
-Handles CLI arguments and the interactive REPL. It manages `readline` history and initializes the configuration.
+Runs the provider/tool loop, streams events, summarizes long histories, reflects useful knowledge into memory, and writes session history.
 
-### 3. Configuration (`src/config.ts`)
-Loads settings from environment variables and the global `~/.lulu/config.json`. It also handles **Project Memory** injection by detecting the current project name.
+### Session System (`src/core/session.ts`)
 
-### 4. Agent Loop (`src/agent/agent.ts`)
-The heartbeat of Lulu. It manages the conversation context and runs up to 10 rounds of tool execution per prompt. It automatically summarizes history when it exceeds 12 messages to preserve the context window.
+Central persistence for channel-specific conversations. CLI, API, dashboard, and Telegram should all address context through `SessionManager` instead of keeping isolated history structures.
 
-### 5. Provider Layer (`src/agent/providers.ts`)
-Normalizes communication between different AI providers (Anthropic, OpenAI, Google, etc.). Configurations for these providers are stored in `src/providers.json`.
+Sessions track:
+- channel and subject id
+- project, provider, model
+- message history
+- created and updated timestamps
+- metadata for channel-specific state
 
-### 6. Tool System (`src/agent/tools.ts`)
-Implements capabilities like reading/writing files, running commands, and updating project memory. Tool schemas are defined in `src/agent/tools_schema.json`.
+### Prompt System (`src/core/prompt.ts`)
+
+Builds the system prompt from ordered layers: base prompt, profile prompt, project prompt, memory, skills, tasks, and other contextual modules.
+
+### Command Registry (`src/core/commands.ts`)
+
+Defines slash commands once and lets each channel call the same command implementation. This prevents `/status`, `/prompt`, `/project`, `/task`, `/reset`, and future commands from drifting across CLI, API, and Telegram.
+
+### Project System (`src/core/project.ts`)
+
+Describes the active project, root path, scripts, stack, and project-level configuration. This is the anchor that keeps sessions, memory, tools, tasks, and prompt context from mixing across repositories.
+
+### Tool Registry (`src/tools/registry.ts`)
+
+Registers tools from modules and exposes provider-compatible tool definitions. Tool execution goes through the policy layer before any action is performed.
+
+### Policy, Security, Secrets, and Capabilities
+
+- `src/core/policy.ts`: central allow/deny/approval decisions
+- `src/core/security.ts`: filesystem and command safety checks
+- `src/core/secrets.ts`: redaction and secret handling
+- `src/core/capabilities.ts`: runtime feature detection such as git, bun, tmux, docker, and platform details
+
+### Task System (`src/core/tasks.ts`)
+
+Tracks longer-running work with ids, status, checklist items, logs, and project scope. Tasks should be visible from chat commands and dashboard surfaces.
+
+### Event Bus (`src/core/events.ts`)
+
+Publishes session, agent, token, tool, and error events. This is the bridge for live UI updates, Telegram notifications, and dashboard observability.
+
+### Integrations
+
+- `src/cli/index.ts` and `src/cli/index.tsx`: terminal entrypoints
+- `src/api/server.ts`: HTTP and websocket API
+- `src/integrations/telegram.ts`: Telegram chat gateway
+- `dashboard/`: browser dashboard
 
 ## Data Storage (`~/.lulu/`)
-Lulu maintains state outside the repository to ensure persistence across sessions:
-- `config.json`: Global user preferences.
-- `history.jsonl`: Detailed interaction logs.
-- `projects/[name]/memory.json`: Structured knowledge about specific codebases.
+
+Lulu stores durable user state outside the repository:
+
+- `config.json`: global user preferences
+- `sessions.json`: central session store
+- `history.jsonl`: interaction history
+- `projects/[name]/memory.json`: project memory
+- task databases and other project-scoped runtime data
+
+## Lessons From OpenClaw And Hermes Agent
+
+The useful pattern is not copying another agent's surface area. It is turning repeated behavior into durable subsystems.
+
+- **Multi-channel gateway:** Telegram, CLI, API, and dashboard must share sessions, commands, tools, and project state.
+- **Persistent memory:** durable memory should be separate from chat history and scoped by project/user.
+- **Skill growth:** solved workflows should become reusable skills or commands after review.
+- **Scheduler and jobs:** unattended recurring work needs a task/job engine, not ad hoc prompts.
+- **Sub-agents:** parallel work should run as isolated sessions with explicit project, tool, and terminal scope.
+- **Sandboxed execution:** powerful local tools need policy, approvals, logging, and optional isolated backends.
+- **Observable runtime:** every tool call, task transition, and agent error should emit events for chat and dashboard surfaces.
 
 ## Architectural Principles
-- **JSON-First Configuration:** All internal metadata and schemas are stored as JSON for easy extensibility.
-- **Stateless Agent:** The agent logic relies on the context passed in each turn, with memory provided via the system prompt.
-- **Safety First:** Destructive operations require explicit permission via environment variables.
+
+- **Local-first:** user data and project state stay under `~/.lulu/` unless a configured provider or integration requires network access.
+- **One runtime, many channels:** channels are transport layers; they should not own core behavior.
+- **Project-scoped by default:** prompts, memory, tasks, tools, and sessions should resolve through the active project.
+- **Policy before action:** shell, tmux, filesystem, network, and external integrations must pass a central permission check.
+- **Inspectable growth:** memory, skills, tasks, and plugin state should be readable and reviewable by the user.

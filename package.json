@@ -17,6 +17,12 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "desktop": "node scripts/desktop.mjs",
+    "desktop:dev": "node scripts/desktop.mjs",
+    "desktop:app": "electron desktop/main.cjs",
+    "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:pack": "npm run desktop:build && electron-builder --dir",
+    "desktop:dist": "npm run desktop:build && electron-builder",
     "dev": "bun src/cli/index.tsx",
     "start": "bun dist/cli/index.js",
     "lulu": "bun src/cli/index.tsx",
@@ -53,6 +59,8 @@
     "@types/bun": "^1.3.13",
     "@types/marked": "^6.0.0",
     "@types/node": "^22.0.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0"
   }

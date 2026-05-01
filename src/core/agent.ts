@@ -16,6 +16,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import pc from "picocolors";
 import { MemoryManager } from "./memory.js";
+import { redact } from "./secrets.js";
+import { eventBus } from "./events.js";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_HISTORY_MESSAGES = 12;
@@ -79,6 +81,9 @@ export async function runAgent(
   history: MessageParam[] = [],
   onToken?: (token: string) => void,
 ) {
+  const sessionId = `sess-${Date.now()}`;
+  eventBus.emit("session:start", { prompt, projectName: config.projectName }, sessionId);
+
   // 1. Initial Memory Search
   const memoryManager = new MemoryManager(config.projectName || "default");
   let memoryContext = "";
@@ -130,6 +135,7 @@ export async function runAgent(
       if (event.type === "text_delta") {
         fullText += event.text;
         if (onToken) onToken(event.text || "");
+        eventBus.emit("agent:token", { text: event.text }, sessionId);
       } else if (event.type === "tool_use") {
         toolCalls = event.toolCalls || [];
       } else if (event.type === "usage" && event.usage) {
@@ -147,13 +153,16 @@ export async function runAgent(
 
     const results: ToolResult[] = [];
     for (const call of toolCalls) {
+      eventBus.emit("tool:start", { name: call.name, input: call.input }, sessionId);
+      let result: ToolResult;
       if (call.name.startsWith("mcp_")) {
-        const result = await callMCPTool(call.name, call.input);
-        results.push({ ...result, tool_use_id: call.id });
+        result = await callMCPTool(call.name, call.input);
+        result = { ...result, tool_use_id: call.id };
       } else {
-        const result = await executeTool(call, sessionConfig);
-        results.push({ ...result, tool_use_id: call.id });
+        result = await executeTool(call, sessionConfig);
       }
+      results.push(result);
+      eventBus.emit("tool:end", { name: call.name, result }, sessionId);
     }
 
     messages.push(toolResultToClaudeMessage(results));
@@ -167,15 +176,19 @@ export async function runAgent(
   const logEntry = {
     timestamp: new Date().toISOString(),
     projectName: config.projectName,
-    prompt,
-    finalText: messages[messages.length - 1].content,
+    prompt: redact(prompt),
+    finalText: redact((messages[messages.length - 1].content as string) || ""),
     usage: totalUsage
   };
   appendFileSync(logPath, JSON.stringify(logEntry) + "\n");
 
-  return {
+  const finalResponse = {
     finalText: messages[messages.length - 1].content as string,
     messages,
     usage: totalUsage
   };
+
+  eventBus.emit("session:end", finalResponse, sessionId);
+
+  return finalResponse;
 }

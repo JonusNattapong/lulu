@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { calculateCost, getBaseUrl } from "../agent/providers.js";
+import { calculateCost, getBaseUrl } from "../providers/providers.js";
 
 describe("calculateCost", () => {
   it("should calculate Claude Sonnet cost correctly", () => {

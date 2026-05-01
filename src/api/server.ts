@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { loadConfig } from "../core/config.js";
+import { loadConfig, loadPromptBuild } from "../core/config.js";
 import { runAgent } from "../core/agent.js";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -10,14 +10,57 @@ import { swagger } from "@elysiajs/swagger";
 
 import { staticPlugin } from "@elysiajs/static";
 import { getMCPServersLoaded } from "../core/mcp.js";
-import { getPluginTools } from "../tools/tools.js";
+import { getPlugins } from "../tools/tools.js";
+import { describePrompt } from "../core/prompt.js";
+import { eventBus } from "../core/events.js";
+import { SessionManager } from "../core/session.js";
+import { SecurityManager } from "../core/security.js";
+import { ConfigResolver } from "../core/config_resolver.js";
+import { commandRegistry } from "../core/commands.js";
+import { redactObject } from "../core/secrets.js";
+
+const subscribers = new Set<any>();
+const sessionManager = new SessionManager();
+
+function broadcast(type: string, payload: any, sessionId?: string) {
+  const redactedPayload = redactObject(payload);
+  const msg = JSON.stringify({ type, sessionId, data: redactedPayload });
+  for (const ws of subscribers) {
+    try { ws.send(msg); } catch {}
+  }
+}
+
+// Subscribe to all events and broadcast them
+eventBus.onAny((event) => {
+  broadcast(event.type, event.payload, event.sessionId);
+});
 
 const app = new Elysia()
   .use(cors())
   .use(swagger())
+  .onBeforeHandle(({ request, set }) => {
+    // API Auth check
+    const apiKey = process.env.LULU_API_KEY;
+    if (apiKey) {
+      const auth = request.headers.get("Authorization");
+      if (!auth || auth !== `Bearer ${apiKey}`) {
+        set.status = 401;
+        return { error: "Unauthorized: Invalid or missing API Key" };
+      }
+    }
+  })
   .use(staticPlugin({ assets: "dashboard/dist", prefix: "/" }))
+  .get("/capabilities", async () => {
+    try {
+      // Lazy-import to avoid pulling it into the main bundle unnecessarily
+      const { detectCapabilities } = await import('../utils/capabilities.js')
+      return await detectCapabilities()
+    } catch (err: any) {
+      return { error: 'Capabilities detection unavailable: ' + err.message }
+    }
+  })
   .get("/status", () => {
-    const config = loadConfig();
+    const config = loadConfig({ ...process.env, LULU_CHANNEL: "api" });
     return {
       status: "online",
       provider: config?.provider || "unknown",
@@ -27,43 +70,141 @@ const app = new Elysia()
     };
   })
   .get("/memory", () => {
-    const config = loadConfig();
+    const config = loadConfig({ ...process.env, LULU_CHANNEL: "api" });
     if (!config) return { content: "" };
     const memoryPath = path.join(homedir(), ".lulu", "projects", config.projectName || "default", "memory.json");
     if (!existsSync(memoryPath)) return { content: "No memory found for this project." };
     return { content: readFileSync(memoryPath, "utf-8") };
   })
   .get("/mcp", () => getMCPServersLoaded())
-  .get("/plugins", () => getPluginTools())
+  .get("/prompt", () => {
+    const prompt = loadPromptBuild();
+    return {
+      profile: prompt.profile,
+      length: prompt.systemPrompt.length,
+      description: describePrompt(prompt),
+      layers: prompt.layers.map((layer) => ({
+        name: layer.name,
+        source: layer.source,
+        length: layer.content.length,
+      })),
+    };
+  })
+  .get("/plugins", () => {
+    const plugins = getPlugins();
+    return plugins.map((p: any) => ({
+      name: p.name,
+      description: p.description,
+      version: p.version || "0.0.0",
+      permissions: p.permissions || [],
+    }));
+  })
   .get("/history", () => {
     const logPath = path.join(homedir(), ".lulu", "history.jsonl");
     if (!existsSync(logPath)) return [];
     const content = readFileSync(logPath, "utf-8");
     return content.split("\n").filter(Boolean).map(line => JSON.parse(line));
   })
+  .get("/sessions", () => sessionManager.list().map((session) => ({
+    id: session.id,
+    channel: session.channel,
+    title: session.title,
+    projectName: session.projectName,
+    provider: session.provider,
+    model: session.model,
+    messages: session.messages.length,
+    turnCount: session.turnCount,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  })))
+  .post("/sessions/reset", ({ body }) => {
+    const { sessionId } = body as { sessionId: string };
+    return sessionManager.reset(sessionId) ?? { error: `Session not found: ${sessionId}` };
+  }, {
+    body: t.Object({
+      sessionId: t.String(),
+    })
+  })
   .post("/prompt", async ({ body, set }) => {
-    const config = loadConfig();
-    if (!config) {
-      set.status = 401;
-      return { error: "API key missing. Please run 'lulu' in a terminal to complete onboarding." };
+    const config = ConfigResolver.resolve({ env: { ...process.env, LULU_CHANNEL: "api" } });
+    const { prompt, context = [], sessionId } = body as { prompt: string; context: any[]; sessionId?: string };
+    
+    const session = sessionId
+      ? (sessionManager.get(sessionId) ?? sessionManager.getOrCreate({ channel: "api", subjectId: sessionId, title: "API session", config }))
+      : sessionManager.getOrCreate({ channel: "api", subjectId: "default", title: "API session", config });
+
+    // Handle Commands
+    const cmdResult = await commandRegistry.handle(prompt, { 
+      sessionId: session.id, 
+      channel: "api", 
+      config, 
+      sessionManager 
+    });
+    if (cmdResult) {
+      return { text: cmdResult.text, messages: session.messages, sessionId: session.id };
     }
-    const { prompt, context = [] } = body as { prompt: string; context: any[] };
     
     let fullText = "";
-    const result = await runAgent(config, prompt, context, (text) => {
+    const history = context.length > 0 ? context : session.messages;
+    const result = await runAgent(config, prompt, history, (text) => {
       fullText += text;
     });
+    const savedSession = sessionManager.saveMessages(session.id, result.messages, config);
 
     return {
       text: fullText,
-      messages: result.messages
+      messages: result.messages,
+      sessionId: savedSession.id,
     };
   }, {
     body: t.Object({
       prompt: t.String(),
-      context: t.Optional(t.Array(t.Any()))
+      context: t.Optional(t.Array(t.Any())),
+      sessionId: t.Optional(t.String())
     })
+  })
+  .ws("/ws", {
+    open(ws) {
+      subscribers.add(ws);
+      ws.send(JSON.stringify({ type: "connected", data: { message: "Lulu WebSocket connected" } }));
+    },
+    async message(ws, raw) {
+      try {
+        const { type, data } = JSON.parse(raw as string);
+          if (type === "prompt") {
+            const config = ConfigResolver.resolve({ env: { ...process.env, LULU_CHANNEL: "dashboard" } });
+            
+            const session = data.sessionId
+              ? (sessionManager.get(data.sessionId) ?? sessionManager.getOrCreate({ channel: "dashboard", subjectId: data.sessionId, title: "Dashboard session", config }))
+              : sessionManager.getOrCreate({ channel: "dashboard", subjectId: "default", title: "Dashboard session", config });
+
+            // Handle Commands
+            const cmdResult = await commandRegistry.handle(data.prompt, { 
+              sessionId: session.id, 
+              channel: "dashboard", 
+              config, 
+              sessionManager 
+            });
+            if (cmdResult) {
+              broadcast("text_delta", { text: cmdResult.text }, session.id);
+              broadcast("text_end", { text: cmdResult.text }, session.id);
+              return;
+            }
+
+            runAgent(config, data.prompt, data.context || session.messages)
+              .then((result) => {
+                sessionManager.saveMessages(session.id, result.messages, config);
+              })
+              .catch((err) => {
+                broadcast("error", { message: err instanceof Error ? err.message : String(err) }, session.id);
+              });
+          }
+      } catch {}
+    },
+    close(ws) {
+      subscribers.delete(ws);
+    },
   })
   .listen(19456);
 
-console.log(`🦊 Elysia is running at http://localhost:19456`);
+console.log(`🦊 Elysia is running at http://localhost:19456 (WebSocket: ws://localhost:19456/ws)`);

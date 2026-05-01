@@ -1,0 +1,31 @@
+appId: com.luluai.coworker
+productName: Lulu Coworker
+directories:
+  output: release
+files:
+  - desktop/**/*
+  - package.json
+extraResources:
+  - from: dashboard/dist
+    to: dashboard/dist
+    filter:
+      - "**/*"
+  - from: dist
+    to: dist
+    filter:
+      - "**/*"
+  - from: .env.example
+    to: .env.example
+asar: true
+npmRebuild: false
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+win:
+  target:
+    - nsis
+linux:
+  category: Development
+  target:
+    - AppImage

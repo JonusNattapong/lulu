@@ -2,18 +2,18 @@ import React from 'react';
 import { Text, Box, Newline } from 'ink';
 import pc from 'picocolors';
 
+type Theme = Record<string, any>;
+
 interface MarkdownProps {
   content: string;
+  theme?: Record<string, any>;
 }
 
-// Simple tokenizer for markdown code blocks with basic syntax highlighting
-function highlightCode(code: string, language?: string): string[] {
+// Simple tokenizer for code blocks — uses string color names compatible with picocolors
+function highlightCode(code: string): string[] {
   const lines: string[] = [];
-
-  // Simple language-based highlighting
-  const keywords = ['function', 'const', 'let', 'var', 'if', 'else', 'for', 'while', 'return', 'import', 'export', 'from', 'class', 'extends', 'new', 'this', 'async', 'await', 'try', 'catch', 'throw', 'typeof', 'instanceof'];
-  const types = ['string', 'number', 'boolean', 'void', 'null', 'undefined', 'any', 'never', 'unknown'];
-
+  const keywords = ['function','const','let','var','if','else','for','while','return','import','export','from','class','extends','new','this','async','await','try','catch','throw','typeof','instanceof'];
+  const types = ['string','number','boolean','void','null','undefined','any','never','unknown'];
   const keywordsRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
   const typesRegex = new RegExp(`\\b(${types.join('|')})\\b`, 'g');
   const stringRegex = /(['"`])(?:(?!\1)[^\\]|\\.)*\1/g;
@@ -21,199 +21,115 @@ function highlightCode(code: string, language?: string): string[] {
   const numberRegex = /\b(\d+)\b/g;
 
   code.split('\n').forEach(line => {
-    let result = line;
-
-    // Comments first (so they don't get highlighted as anything else)
-    result = result.replace(commentRegex, pc.gray);
-
-    // Strings
-    result = result.replace(stringRegex, pc.yellow);
-
-    // Keywords
-    result = result.replace(keywordsRegex, pc.cyan);
-
-    // Types
-    result = result.replace(typesRegex, pc.magenta);
-
-    // Numbers
-    result = result.replace(numberRegex, pc.yellow);
-
-    // Brackets/punctuation — separate replace for safety
-    result = result.replace(/([{}\[\](),.;])/g, pc.dim);
-
+    let result = line
+      .replace(commentRegex, '\x1b[90m$1\x1b[0m')
+      .replace(stringRegex, '\x1b[93m$&\x1b[0m')
+      .replace(keywordsRegex, '\x1b[36m$&\x1b[0m')
+      .replace(typesRegex, '\x1b[35m$&\x1b[0m')
+      .replace(numberRegex, '\x1b[33m$1\x1b[0m')
+      .replace(/([{}\[\](),.;])/g, '\x1b[90m$1\x1b[0m');
     lines.push(result);
   });
-
   return lines;
 }
 
-// Parse inline markdown elements
-function parseInline(text: string): React.ReactNode[] {
+function parseInline(text: string, theme?: Theme): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let remaining = text;
   let key = 0;
 
   while (remaining.length > 0) {
-    // Check for bold: **text**
     const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
-    // Check for italic: *text*
     const italicMatch = remaining.match(/\*(?!\*)(.+?)\*/);
-    // Check for code: `code`
     const codeMatch = remaining.match(/`(.+?)`/);
-    // Check for link: [text](url)
     const linkMatch = remaining.match(/\[(.+?)\]\((.+?)\)/);
 
     const matches = [boldMatch, italicMatch, codeMatch, linkMatch].filter(Boolean) as RegExpMatchArray[];
     matches.sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0));
+    const first = matches[0];
 
-    const firstMatch = matches[0];
-
-    if (firstMatch && firstMatch.index === 0) {
-      if (firstMatch === boldMatch) {
-        parts.push(<Text key={key++} bold>{firstMatch[1]}</Text>);
-      } else if (firstMatch === italicMatch) {
-        parts.push(<Text key={key++} italic>{firstMatch[1]}</Text>);
-      } else if (firstMatch === codeMatch) {
-        parts.push(<Text key={key++} inverse>{firstMatch[1]}</Text>);
-      } else if (firstMatch === linkMatch) {
-        parts.push(
-          <Text key={key++} underline color="cyan">
-            {firstMatch[1]}
-          </Text>
-        );
-      }
-      remaining = remaining.slice(firstMatch[0].length);
+    if (first && first.index === 0) {
+      if (first === boldMatch) parts.push(<Text key={key++} bold>{first[1]}</Text>);
+      else if (first === italicMatch) parts.push(<Text key={key++} italic>{first[1]}</Text>);
+      else if (first === codeMatch) parts.push(<Text key={key++} inverse>{first[1]}</Text>);
+      else if (first === linkMatch) parts.push(<Text key={key++} underline color="cyan">{first[1]}</Text>);
+      remaining = remaining.slice(first[0].length);
     } else {
-      // No match at start — emit plain text until next special char
-      const nextSpecial = remaining.search(/(\*\*|\*(?!\*)|`|\[.*?\]\(.*?\))/);
-      if (nextSpecial === -1) {
+      const next = remaining.search(/(\*\*|\*(?!\*)|`|\[.*?\]\(.*?\))/);
+      if (next === -1) {
         parts.push(<Text key={key++}>{remaining}</Text>);
         break;
       }
-      parts.push(<Text key={key++}>{remaining.slice(0, nextSpecial)}</Text>);
-      remaining = remaining.slice(nextSpecial);
+      parts.push(<Text key={key++}>{remaining.slice(0, next)}</Text>);
+      remaining = remaining.slice(next);
     }
   }
-
   return parts;
 }
 
-export const Markdown: React.FC<MarkdownProps> = ({ content }) => {
+export const Markdown: React.FC<MarkdownProps> = ({ content, theme }) => {
   const lines: React.ReactNode[] = [];
-  let inCodeBlock = false;
-  let codeContent: string[] = [];
-  let codeLanguage = '';
+  let inCode = false;
+  let codeBuf: string[] = [];
   let key = 0;
 
-  const pushText = (node: React.ReactNode) => {
-    lines.push(<Text key={key++}>{node}</Text>);
+  const push = (node: React.ReactNode) => { lines.push(<Text key={key++}>{node}</Text>); };
+
+  const flush = () => {
+    if (codeBuf.length === 0) return;
+    lines.push(
+      <Box key={key++} flexDirection="column" marginBottom={1}>
+        {codeBuf.map((line, i) => (
+          <Text key={i} color="gray">{'  '}{line}</Text>
+        ))}
+      </Box>
+    );
+    codeBuf = []; inCode = false;
   };
 
-  const flushCodeBlock = () => {
-    if (codeContent.length > 0) {
-      lines.push(
-        <Box key={key++} flexDirection="column" marginBottom={1}>
-          {codeContent.map((line, i) => (
-            <Text key={i} color="gray">
-              {'  '}{line}
-            </Text>
-          ))}
-        </Box>
-      );
-      codeContent = [];
-      inCodeBlock = false;
-      codeLanguage = '';
-    }
-  };
-
-  content.split('\n').forEach((line) => {
-    // Code block start/end
-    const codeBlockMatch = line.match(/^```(\w*)$/);
-    if (codeBlockMatch) {
-      if (inCodeBlock) {
-        flushCodeBlock();
-      } else {
-        inCodeBlock = true;
-        codeLanguage = codeBlockMatch[1] || '';
-        codeContent = [];
-      }
+  content.split('\n').forEach(line => {
+    const codeMarker = line.match(/^```(\w*)$/);
+    if (codeMarker) {
+      if (inCode) flush();
+      else { inCode = true; codeBuf = []; }
       return;
     }
 
-    if (inCodeBlock) {
-      const highlighted = highlightCode(line, codeLanguage);
-      codeContent.push(...highlighted);
+    if (inCode) {
+      codeBuf.push(...highlightCode(line));
       return;
     }
 
-    // Headings
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      const text = headingMatch[2];
-      const colors = ['yellow', 'green', 'cyan', 'magenta', 'red', 'blue'];
-      const color = colors[level - 1] || 'white';
-      const bold = level <= 2;
-      const prefix = '#'.repeat(level) + ' ';
-      pushText(
-        <Text bold={bold} color={color}>
-          {prefix}{text}
+    const heading = line.match(/^(#{1,6})\s+(.+)/);
+    if (heading) {
+      const lvl = heading[1].length;
+      const colors = theme?.headings || ['yellow','green','cyan','magenta','red','blue'];
+      push(
+        <Text bold color={colors[lvl-1] || 'white'}>
+          {'#'.repeat(lvl) + ' '}{heading[2]}
         </Text>
       );
       return;
     }
 
-    // Unordered list
-    const ulMatch = line.match(/^[\s]*[-*+]\s+(.+)/);
-    if (ulMatch) {
-      pushText(
-        <Text>
-          {'  • '}{parseInline(ulMatch[1])}
-        </Text>
-      );
-      return;
-    }
+    const ul = line.match(/^[\s]*[-*+]\s+(.+)/);
+    if (ul) { push(<Text>{'  • '}{parseInline(ul[1], theme)}</Text>); return; }
 
-    // Ordered list
-    const olMatch = line.match(/^[\s]*\d+\.\s+(.+)/);
-    if (olMatch) {
-      pushText(
-        <Text>
-          {'  ▶ '}{parseInline(olMatch[1])}
-        </Text>
-      );
-      return;
-    }
+    const ol = line.match(/^[\s]*\d+\.\s+(.+)/);
+    if (ol) { push(<Text>{'  ▶ '}{parseInline(ol[1], theme)}</Text>); return; }
 
-    // Blockquote
-    const quoteMatch = line.match(/^>\s?(.*)/);
-    if (quoteMatch) {
-      pushText(
-        <Text color="gray" italic>
-          {'❝ '}{quoteMatch[1]}
-        </Text>
-      );
-      return;
-    }
+    const quote = line.match(/^>\s?(.*)/);
+    if (quote) { push(<Text color="gray" italic>{'❝ '}{quote[1]}</Text>); return; }
 
-    // Horizontal rule
     if (/^(-{3,}|_{3,}|\*{3,})$/.test(line.trim())) {
-      pushText(<Text color="gray">────────────────</Text>);
-      return;
+      push(<Text color="gray">────────────────</Text>); return;
     }
 
-    // Empty line
-    if (line.trim() === '') {
-      pushText(<Newline />);
-      return;
-    }
+    if (line.trim() === '') { push(<Newline/>); return; }
 
-    // Regular line — parse inline elements
-    pushText(parseInline(line));
+    push(parseInline(line, theme));
   });
 
-  // Flush any remaining code block
-  flushCodeBlock();
-
+  flush();
   return <Box flexDirection="column">{lines}</Box>;
 };

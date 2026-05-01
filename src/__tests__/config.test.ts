@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parsePositiveInt } from "../config.js";
+import { parsePositiveInt } from "../core/config.js";
 
 describe("parsePositiveInt", () => {
   it("returns fallback for undefined value", () => {

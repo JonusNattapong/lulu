@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  Database, 
-  Cpu, 
-  History, 
-  ExternalLink, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Activity,
+  Database,
+  Cpu,
+  History,
+  ExternalLink,
   Zap,
   Terminal,
   Search,
   MessageSquare,
-  Globe
+  Globe,
+  Box,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -51,29 +54,85 @@ const App: React.FC = () => {
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
 
+  const fetchData = async () => {
+    try {
+      const [s, h, m, mc, p, c] = await Promise.all([
+        axios.get(`${API_BASE}/status`),
+        axios.get(`${API_BASE}/history`),
+        axios.get(`${API_BASE}/memory`),
+        axios.get(`${API_BASE}/mcp`),
+        axios.get(`${API_BASE}/plugins`),
+        axios.get(`${API_BASE}/capabilities`).catch(() => null)
+      ]);
+      setStatus(s.data);
+      setHistory(h.data);
+      setMemory(m.data.content);
+      setMcp(mc.data);
+      setPlugins(p.data);
+      if (c) setCapabilities(c.data);
+    } catch (err) {
+      console.error('Fetch failed', err);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [s, h, m, mc, p] = await Promise.all([
-          axios.get(`${API_BASE}/status`),
-          axios.get(`${API_BASE}/history`),
-          axios.get(`${API_BASE}/memory`),
-          axios.get(`${API_BASE}/mcp`),
-          axios.get(`${API_BASE}/plugins`)
-        ]);
-        setStatus(s.data);
-        setHistory(h.data);
-        setMemory(m.data.content);
-        setMcp(mc.data);
-        setPlugins(p.data);
-      } catch (err) {
-        console.error('Fetch failed', err);
-      }
-    };
     fetchData();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const [streamText, setStreamText] = useState('');
+  const [streamSession, setStreamSession] = useState('');
+  const [promptInput, setPromptInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const [capabilities, setCapabilities] = useState<any>(null);
+
+  // WebSocket for real-time streaming
+  useEffect(() => {
+    const ws = new WebSocket(`ws://localhost:19456/ws`);
+    wsRef.current = ws;
+    
+    ws.onmessage = (event) => {
+      const { type, data } = JSON.parse(event.data);
+      
+      switch (type) {
+        case "connected":
+          console.log("WebSocket connected");
+          break;
+        case "session_start":
+          setStreamSession(data.sessionId);
+          setStreamText('');
+          setIsLoading(true);
+          break;
+        case "stream_token":
+          setStreamText(prev => prev + (data.token || ''));
+          break;
+        case "session_end":
+          setIsLoading(false);
+          // Refresh data after completion
+          fetchData();
+          break;
+        case "error":
+          setIsLoading(false);
+          setStreamText(prev => prev + `\n\nError: ${data.message}`);
+          break;
+      }
+    };
+    
+    return () => ws.close();
+  }, []);
+
+  const sendPrompt = () => {
+    if (!promptInput.trim() || !wsRef.current) return;
+    const msg = {
+      type: "prompt",
+      data: { prompt: promptInput, context: [] }
+    };
+    wsRef.current.send(JSON.stringify(msg));
+    setStreamText(prev => prev + `\n\n[User]: ${promptInput}`);
+    setPromptInput('');
+  };
 
   const chartData = history.slice(-10).map((h, i) => ({
     name: `T-${10-i}`,
@@ -98,8 +157,8 @@ const App: React.FC = () => {
             </p>
           </div>
           
-          <nav className="flex bg-slate-800/50 p-1 rounded-xl border border-slate-700">
-            {['overview', 'memory', 'ecosystem', 'history'].map((tab) => (
+          <nav className="flex bg-slate-800/50 p-1 rounded-xl border border-slate-700 flex-wrap gap-1">
+            {['overview', 'chat', 'memory', 'ecosystem', 'capabilities', 'history'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -231,6 +290,87 @@ const App: React.FC = () => {
             </motion.div>
           )}
 
+          {activeTab === 'chat' && (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="glass rounded-3xl p-6 min-h-[500px] flex flex-col"
+            >
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-cyan-400">
+                <MessageSquare size={20} /> Chat with Lulu
+              </h2>
+              <div className="flex-1 bg-slate-900/50 rounded-2xl p-4 mb-4 overflow-y-auto max-h-[60vh]">
+                {streamText ? (
+                  <pre className="text-sm text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">
+                    {streamText}
+                  </pre>
+                ) : (
+                  <p className="text-slate-500 italic">Send a message to start chatting with Lulu...</p>
+                )}
+              </div>
+              <div className="flex gap-3 items-center">
+                <Terminal size={18} className="text-cyan-400" />
+                <input
+                  type="text"
+                  value={promptInput}
+                  onChange={(e) => setPromptInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') sendPrompt(); }}
+                  placeholder="Ask Lulu anything..."
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  disabled={isLoading}
+                />
+                <button
+                  onClick={sendPrompt}
+                  disabled={isLoading || !promptInput.trim()}
+                  className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl font-semibold hover:from-cyan-400 hover:to-blue-400 disabled:opacity-50 transition-all"
+                >
+                  {isLoading ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'capabilities' && (
+            <motion.div
+              key="capabilities"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="glass rounded-3xl p-8"
+            >
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-purple-400">
+                <Box size={24} /> System Capabilities
+              </h2>
+              {capabilities ? (
+                <div className="space-y-6">
+                  {/* Overview */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <CapabilityCard label="Git" available={!!capabilities.git?.available} detail={capabilities.git?.path ? '✓ Installed' : undefined} />
+                    <CapabilityCard label="Tmux" available={capabilities.tmux} />
+                    <CapabilityCard label="Bun" available={capabilities.bun?.available} detail={capabilities.bun?.version} />
+                    <CapabilityCard label="Node" available={capabilities.node?.available} detail={capabilities.node?.version} />
+                    <CapabilityCard label="Browser" available={capabilities.browser?.available} detail={capabilities.browser?.type} />
+                    <CapabilityCard label="Network" available={capabilities.network?.available} />
+                    <CapabilityCard label="Bash" available={capabilities.shell?.bash} />
+                    <CapabilityCard label="Zsh" available={capabilities.shell?.zsh} />
+                  </div>
+
+                  {/* Raw JSON */}
+                  <details className="mt-6">
+                    <summary className="cursor-pointer text-slate-400 hover:text-slate-200 transition-colors">
+                      View Raw Detection Data
+                    </summary>
+                    <pre className="bg-slate-950/80 rounded-xl p-4 text-xs overflow-x-auto border border-slate-800 mt-2">
+                      {JSON.stringify(capabilities, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              ) : (
+                <p className="text-slate-500 italic">Capabilities data not available. Make sure the API server is running.</p>
+              )}
+            </motion.div>
+          )}
+
           {activeTab === 'ecosystem' && (
             <motion.div 
               key="ecosystem"
@@ -270,6 +410,41 @@ const App: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* WebSocket Stream & Prompt Input */}
+        <div className="mt-8 space-y-4">
+          {streamText && (
+            <div className="glass rounded-2xl p-6 border border-cyan-500/30 bg-cyan-500/5">
+              <div className="flex items-center gap-2 mb-3">
+                <MessageSquare size={16} className="text-cyan-400" />
+                <span className="text-sm font-bold text-cyan-300">Live Response {isLoading && <span className="animate-pulse">●</span>}</span>
+                {streamSession && <span className="text-[10px] text-slate-500 ml-2">#{streamSession}</span>}
+              </div>
+              <pre className="text-sm text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">{streamText}</pre>
+            </div>
+          )}
+          
+          {/* Prompt Input */}
+          <div className="glass rounded-2xl p-4 border border-slate-700 flex gap-3 items-center">
+            <Terminal size={18} className="text-cyan-400 flex-shrink-0" />
+            <input
+              type="text"
+              value={promptInput}
+              onChange={(e) => setPromptInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') sendPrompt(); }}
+              placeholder="Send a prompt to Lulu..."
+              className="flex-1 bg-transparent border-none outline-none text-slate-200 placeholder-slate-600 text-sm"
+              disabled={isLoading}
+            />
+            <button
+              onClick={sendPrompt}
+              disabled={isLoading}
+              className="px-5 py-2 bg-cyan-500 text-white rounded-xl text-sm font-bold hover:bg-cyan-400 disabled:opacity-50 transition-all"
+            >
+              {isLoading ? 'Thinking...' : 'Send'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -283,6 +458,16 @@ const StatCard: React.FC<{ icon: React.ReactNode, label: string, value: string |
     </div>
     <div className="text-2xl font-bold text-white mb-1">{value}</div>
     {subValue && <div className="text-xs text-slate-500 truncate">{subValue}</div>}
+  </div>
+);
+
+const CapabilityCard: React.FC<{ label: string, available: boolean, detail?: string }> = ({ label, available, detail }) => (
+  <div className="glass p-4 rounded-2xl border border-slate-700/50 text-center">
+    <div className={`text-2xl mb-2 ${available ? 'text-green-400' : 'text-red-400'}`}>
+      {available ? <CheckCircle size={24} /> : <XCircle size={24} />}
+    </div>
+    <div className="font-semibold text-slate-200">{label}</div>
+    {detail && <div className="text-xs text-slate-400 mt-1">{detail}</div>}
   </div>
 );
 

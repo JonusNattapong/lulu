@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { wildcardMatch, searchFiles } from "../agent/tools.js";
+import { wildcardMatch, searchFiles } from "../tools/utils.js";
 import { mkdtemp, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 
