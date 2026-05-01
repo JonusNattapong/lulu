@@ -8,14 +8,33 @@ import { readFileSync, existsSync } from "node:fs";
 
 import { swagger } from "@elysiajs/swagger";
 
+import { staticPlugin } from "@elysiajs/static";
+import { getMCPServersLoaded } from "./agent/mcp.js";
+import { getPluginTools } from "./agent/tools.js";
+
 const app = new Elysia()
   .use(cors())
   .use(swagger())
-  .get("/", () => ({
-    name: "Lulu API",
-    version: "0.0.2",
-    status: "online"
-  }))
+  .use(staticPlugin({ assets: "dashboard/dist", prefix: "/" }))
+  .get("/status", () => {
+    const config = loadConfig();
+    return {
+      status: "online",
+      provider: config?.provider || "unknown",
+      model: config?.model || "unknown",
+      projectName: config?.projectName || "unknown",
+      version: "0.0.5"
+    };
+  })
+  .get("/memory", () => {
+    const config = loadConfig();
+    if (!config) return { content: "" };
+    const memoryPath = path.join(homedir(), ".lulu", "projects", config.projectName || "default", "memory.json");
+    if (!existsSync(memoryPath)) return { content: "No memory found for this project." };
+    return { content: readFileSync(memoryPath, "utf-8") };
+  })
+  .get("/mcp", () => getMCPServersLoaded())
+  .get("/plugins", () => getPluginTools())
   .get("/history", () => {
     const logPath = path.join(homedir(), ".lulu", "history.jsonl");
     if (!existsSync(logPath)) return [];
@@ -45,6 +64,6 @@ const app = new Elysia()
       context: t.Optional(t.Array(t.Any()))
     })
   })
-  .listen(3001);
+  .listen(8080);
 
-console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
+console.log(`🦊 Elysia is running at http://localhost:8080`);

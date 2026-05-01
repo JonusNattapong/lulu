@@ -6,8 +6,9 @@ All notable changes to the Lulu project will be documented in this file.
 
 ### Added
 - **The Alchemist (Plugin System):** Users can now extend Lulu's capabilities by dropping JavaScript files into `~/.lulu/plugins/`. Tools are loaded dynamically at startup.
-- **Improved Tool Discovery:** Dynamic merging of Built-in, Plugin, and MCP tools.
-- **Autonomous Browser Research:** Added `browser_search` and `browser_read` tools using Playwright.
+- **Web Dashboard:** A modern, local web interface (Tailwind-based) to visualize project memory, MCP servers, and conversation history. Accessible via `/dashboard` command.
+- **Dynamic MCP Support:** Expanded discovery (including Claude Desktop) and dynamic lifecycle management via CLI tools.
+- **Autonomous Browser Research:** Added `browser_search` and `browser_read` tools using Playwright for deep web discovery.
 - **HTML to Markdown:** Integrated `turndown` for clean web content.
 
 ## [0.0.4] - 2026-05-01

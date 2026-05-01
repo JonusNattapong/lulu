@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { render, useApp } from 'ink';
+import open from 'open';
 import { App } from './ui/App.js';
 import { loadConfig } from './config.js';
 import { runAgent } from './agent/agent.js';
@@ -25,6 +26,15 @@ const LuluLauncher = () => {
 
   const handleSendMessage = useCallback(async (text: string) => {
     if (!config) return;
+
+    if (text === '/dashboard') {
+      open('http://localhost:3001');
+      setMessages(prev => [...prev, 
+        { role: 'user', content: text },
+        { role: 'assistant', content: 'Opening Lulu Dashboard at http://localhost:3001 ...' }
+      ]);
+      return;
+    }
 
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setIsThinking(true);

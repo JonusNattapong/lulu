@@ -13,6 +13,7 @@ import path from "path";
 
 import { chromium } from "playwright";
 import TurndownService from "turndown";
+import { addMCPServer, getMCPServersLoaded } from "./mcp.js";
 
 export const BUILTIN_TOOLS: ToolDef[] = JSON.parse(
   readFileSync(new URL("./tools_schema.json", import.meta.url), "utf-8"),
@@ -37,7 +38,7 @@ export async function loadPlugins(): Promise<void> {
       const pluginPath = path.join(pluginDir, file);
       // Use dynamic import with file:// for Windows compatibility
       const plugin = (await import(`file://${pluginPath}`)).default as Plugin;
-      if (plugin && plugin.name && plugin.execute) {
+      if (plugin && plugin.name && typeof plugin.execute === 'function') {
         PLUGINS.set(plugin.name, plugin);
       }
     } catch (err) {
@@ -182,6 +183,20 @@ async function executeToolImpl(call: ToolCall, config: AgentConfig): Promise<str
       const newSkills = call.input.skills as object;
       writeFileSync(skillsPath, JSON.stringify(newSkills, null, 2), "utf-8");
       return "Global skill library updated and curated.";
+    }
+    case "list_mcp_servers": {
+      const servers = getMCPServersLoaded();
+      if (servers.length === 0) return "No MCP servers loaded.";
+      return "Loaded MCP Servers:\n" + servers.map(s => `- ${s.name} (${s.tools} tools)`).join("\n");
+    }
+    case "add_mcp_server": {
+      const { name, command, args, env } = call.input as any;
+      try {
+        await addMCPServer({ name, command, args, env });
+        return `Successfully added and started MCP server: ${name}`;
+      } catch (err) {
+        return `Failed to add MCP server ${name}: ${err instanceof Error ? err.message : String(err)}`;
+      }
     }
     case "browser_search": {
       const { query } = call.input as { query: string };

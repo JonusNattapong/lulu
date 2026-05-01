@@ -14,11 +14,11 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-
 import pc from "picocolors";
+import { MemoryManager } from "./memory_v2.js";
 
 const MAX_TOOL_ROUNDS = 10;
-const MAX_HISTORY_MESSAGES = 12; // Start summarizing when history gets long
+const MAX_HISTORY_MESSAGES = 12;
 
 async function summarizeHistory(config: AgentConfig, messages: MessageParam[]): Promise<MessageParam> {
   const summaryPrompt = "Please summarize the preceding conversation into a concise paragraph, preserving all key decisions, file names mentioned, and task progress. This summary will be used as context for the next turn.";
@@ -40,7 +40,9 @@ async function summarizeHistory(config: AgentConfig, messages: MessageParam[]): 
 }
 
 async function reflectAndStore(config: AgentConfig, messages: MessageParam[]) {
-  const reflectionPrompt = "Reflect on the task just completed. If you learned something new about this project's architecture, patterns, or specific setup, please output a single-paragraph summary starting with 'MEMORY UPDATE: '. If nothing significant changed, output 'NO UPDATE'.";
+  const memoryManager = new MemoryManager(config.projectName || "default");
+  
+  const reflectionPrompt = "Reflect on the session. Extract a single-paragraph summary of project knowledge (MEMORY UPDATE). Also, if you discovered a reusable workflow or command pattern, describe it as a SKILL (SKILL UPDATE). Format: MEMORY UPDATE: ... SKILL UPDATE: ...";
   
   const stream = sendToProviderStream(config, [
     ...messages,
@@ -52,142 +54,128 @@ async function reflectAndStore(config: AgentConfig, messages: MessageParam[]) {
     if (event.type === "text_end") reflection = event.text ?? "";
   }
 
-  if (reflection.startsWith("MEMORY UPDATE:")) {
-    const memoryText = reflection.replace("MEMORY UPDATE:", "").trim();
-    // Update memory.json internally (simplified)
-    const memoryPath = path.join(homedir(), ".lulu", "projects", `${config.projectName}.json`);
-    let memory = { notes: [] as string[] };
-    try {
-      if (existsSync(memoryPath)) memory = JSON.parse(readFileSync(memoryPath, "utf-8"));
-      memory.notes.push(memoryText);
-      if (!existsSync(path.dirname(memoryPath))) mkdirSync(path.dirname(memoryPath), { recursive: true });
-      writeFileSync(memoryPath, JSON.stringify(memory, null, 2));
-    } catch { /* Ignore */ }
+  if (reflection.includes("MEMORY UPDATE:")) {
+    const memoryPart = reflection.split("MEMORY UPDATE:")[1]?.split("SKILL UPDATE:")[0]?.trim();
+    if (memoryPart) {
+      await memoryManager.addMemory(config, memoryPart, { type: "reflection" });
+    }
+  }
+
+  if (reflection.includes("SKILL UPDATE:")) {
+    const skillPart = reflection.split("SKILL UPDATE:")[1]?.trim();
+    if (skillPart) {
+      const skillsPath = path.join(homedir(), ".lulu", "skills.json");
+      const currentSkills = existsSync(skillsPath) ? JSON.parse(readFileSync(skillsPath, "utf-8")) : {};
+      const skillName = `auto-${Date.now()}`;
+      currentSkills[skillName] = { name: skillName, description: "Auto-learned skill", steps: skillPart };
+      writeFileSync(skillsPath, JSON.stringify(currentSkills, null, 2));
+    }
   }
 }
 
 export async function runAgent(
   config: AgentConfig,
-  userMessage: string,
-  context: MessageParam[] = [],
-  onText?: (text: string) => void,
-): Promise<{ messages: MessageParam[]; finalText: string; usage: Usage }> {
-  // Load tools
-  await loadPlugins();
-  const pluginTools = getPluginTools();
-  let allTools = [...BUILTIN_TOOLS, ...pluginTools];
-
-  if (config.mcpServers && config.mcpServers.length > 0) {
-    await loadMCPServers(config.mcpServers);
-    const mcpTools = getMCPTools();
-    allTools = [...allTools, ...mcpTools];
-    
-    if (onText && mcpTools.length > 0) {
-      onText(pc.dim(`[MCP] Loaded ${mcpTools.length} tools\n`));
+  prompt: string,
+  history: MessageParam[] = [],
+  onToken?: (token: string) => void,
+) {
+  // 1. Initial Memory Search
+  const memoryManager = new MemoryManager(config.projectName || "default");
+  let memoryContext = "";
+  try {
+    const relevantMemories = await memoryManager.search(config, prompt);
+    if (relevantMemories.length > 0) {
+      memoryContext = `\n[Relevant Project Memory]:\n${relevantMemories.map(m => `- ${m.content}`).join("\n")}`;
     }
+  } catch (err) {
+    console.error("[Memory] Search failed at startup:", err);
   }
 
-  if (onText && pluginTools.length > 0) {
-    onText(pc.dim(`[Plugin] Loaded ${pluginTools.length} custom tools\n`));
-  }
+  // Update system prompt with memory
+  const sessionConfig = {
+    ...config,
+    systemPrompt: config.systemPrompt + memoryContext
+  };
 
-  let activeContext = [...context];
-  let totalUsage: Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, costEstimate: 0 };
+  await loadPlugins();
+  const mcpServers = (config as any).mcpServers || [];
+  await loadMCPServers(mcpServers);
 
-  // Context Management: Summarize if history is too long
-  if (activeContext.length > MAX_HISTORY_MESSAGES) {
-    if (onText) onText(pc.dim("\n[System] Summarizing long conversation history to save context...\n"));
-    const summaryMsg = await summarizeHistory(config, activeContext.slice(0, -4));
-    activeContext = [summaryMsg, ...activeContext.slice(-4)];
-  }
-
-  const messages: MessageParam[] = [
-    ...activeContext,
-    { role: "user" as const, content: userMessage },
+  const tools = [
+    ...BUILTIN_TOOLS,
+    ...getPluginTools(),
+    ...getMCPTools(),
   ];
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const stream = sendToProviderStream(
-      config,
-      messages,
-      allTools,
-    );
+  let messages: MessageParam[] = [...history];
+  if (messages.length > MAX_HISTORY_MESSAGES) {
+    const summaryMessage = await summarizeHistory(sessionConfig, messages);
+    messages = [summaryMessage];
+  }
+  
+  messages.push({ role: "user", content: prompt });
 
-    let text = "";
-    let toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+  let totalUsage: Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, costEstimate: 0 };
+  let rounds = 0;
+
+  while (rounds < MAX_TOOL_ROUNDS) {
+    rounds++;
+    let fullText = "";
+    let toolCalls: any[] = [];
+    let usage: Usage | undefined;
+
+    const stream = sendToProviderStream(sessionConfig, messages, tools);
 
     for await (const event of stream) {
-      switch (event.type) {
-        case "text_delta":
-          if (event.text) {
-            text += event.text;
-            if (onText) onText(event.text);
-          }
-          break;
-        case "text_end":
-          // Text is already accumulated in text_delta for streaming
-          // but we ensure it's finalized if needed
-          if (event.text && !text) text = event.text;
-          break;
-        case "tool_use":
-          toolCalls = event.toolCalls ?? [];
-          break;
-        case "usage":
-          if (event.usage) {
-            totalUsage.inputTokens += event.usage.inputTokens;
-            totalUsage.outputTokens += event.usage.outputTokens;
-            totalUsage.totalTokens += event.usage.totalTokens;
-            totalUsage.costEstimate += event.usage.costEstimate;
-          }
-          break;
+      if (event.type === "text_delta") {
+        fullText += event.text;
+        if (onToken) onToken(event.text || "");
+      } else if (event.type === "tool_use") {
+        toolCalls = event.toolCalls || [];
+      } else if (event.type === "usage" && event.usage) {
+        usage = event.usage;
+        totalUsage.inputTokens += usage.inputTokens;
+        totalUsage.outputTokens += usage.outputTokens;
+        totalUsage.totalTokens += usage.totalTokens;
+        totalUsage.costEstimate += usage.costEstimate;
       }
     }
 
-    // If model stops with just text, we're done
-    if (toolCalls.length === 0) {
-      if (text) {
-        messages.push({ role: "assistant" as const, content: text });
-        if (onText) onText(text + "\n");
+    messages.push({ role: "assistant", content: fullText || "Thinking..." });
+
+    if (toolCalls.length === 0) break;
+
+    const results: ToolResult[] = [];
+    for (const call of toolCalls) {
+      if (call.name.startsWith("mcp_")) {
+        const result = await callMCPTool(call.name, call.input);
+        results.push({ ...result, tool_use_id: call.id });
+      } else {
+        const result = await executeTool(call, sessionConfig);
+        results.push({ ...result, tool_use_id: call.id });
       }
-      
-      // Auto-Memory Reflection
-      if (onText) onText(pc.dim("[System] Reflecting on task for project memory...\n"));
-      await reflectAndStore(config, messages);
-      
-      return { messages, finalText: "", usage: totalUsage };
     }
 
-    // Execute all tool calls in this round
-    const results: ToolResult[] = await Promise.all(toolCalls.map(async (tc) => {
-      if (tc.name.startsWith("mcp_")) {
-        return callMCPTool(tc.name, tc.input);
-      }
-      return executeTool(tc, config);
-    }));
-
-    // Record the tool calls and results in message history
-    messages.push(toolCallToClaudeMessage(toolCalls));
     messages.push(toolResultToClaudeMessage(results));
   }
 
-  // Log the final state of this turn as JSON
-  try {
-    const logDir = path.join(homedir(), ".lulu");
-    if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
-    const logPath = path.join(logDir, "history.jsonl");
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      project: config.projectName,
-      messages: messages.slice(-2), // Log the last exchange
-    };
-    appendFileSync(logPath, JSON.stringify(logEntry) + "\n", "utf-8");
-  } catch {
-    // Ignore logging errors
-  }
+  // After session, reflect and store
+  await reflectAndStore(sessionConfig, messages);
+  
+  // Log session to history
+  const logPath = path.join(homedir(), ".lulu", "history.jsonl");
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    projectName: config.projectName,
+    prompt,
+    finalText: messages[messages.length - 1].content,
+    usage: totalUsage
+  };
+  appendFileSync(logPath, JSON.stringify(logEntry) + "\n");
 
   return {
+    finalText: messages[messages.length - 1].content as string,
     messages,
-    finalText: "(max tool rounds reached)",
     usage: totalUsage
   };
 }

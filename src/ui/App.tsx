@@ -45,6 +45,10 @@ export const App: React.FC<AppProps> = ({ onSendMessage, messages, currentRespon
       exit();
       return;
     }
+    if (value === '/dashboard') {
+      await onSendMessage('/dashboard'); // Let the parent handle the opening logic
+      return;
+    }
     await onSendMessage(value);
   };
 

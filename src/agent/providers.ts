@@ -1,8 +1,30 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { pipeline } from "@xenova/transformers";
 import type { ToolDef, ToolCall, ToolResult, AgentConfig, ModelProvider } from "../types.js";
 
 // Re-export for convenience
 export type { ToolDef, ToolCall, ToolResult };
+
+// --- Local Embedding Model (all-MiniLM-L6-v2) ---
+let extractor: any = null;
+
+async function getExtractor() {
+  if (!extractor) {
+    extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  }
+  return extractor;
+}
+
+export async function getEmbedding(_config: AgentConfig, text: string): Promise<EmbeddingResponse> {
+  const extract = await getExtractor();
+  const output = await extract(text, { pooling: 'mean', normalize: true });
+  const embedding = Array.from(output.data) as number[];
+  
+  return {
+    embedding,
+    usage: { totalTokens: 0 } // Local, so no token cost
+  };
+}
 
 // --- Anthropic / Claude ---
 
@@ -30,6 +52,11 @@ export interface AgentResponse {
   usage: Usage;
 }
 
+export interface EmbeddingResponse {
+  embedding: number[];
+  usage: { totalTokens: number };
+}
+
 export interface StreamEvent {
   type: "text_delta" | "text_end" | "tool_use" | "usage";
   text?: string;
@@ -39,7 +66,6 @@ export interface StreamEvent {
 }
 
 export function calculateCost(model: string, input: number, output: number): number {
-  // Rough estimate per 1M tokens (Price in USD)
   const rates: Record<string, { in: number, out: number }> = {
     "claude-3-5-sonnet-20241022": { in: 3, out: 15 },
     "claude-3-5-haiku-20241022": { in: 0.25, out: 1.25 },
@@ -228,7 +254,6 @@ async function sendToOpenAICompatible(
 ): Promise<AgentResponse> {
   const baseUrl = getBaseUrl(config.provider);
   
-  // Convert Anthropic messages to OpenAI format
   const openAIMessages = messages.map(m => ({
     role: m.role,
     content: Array.isArray(m.content) 
@@ -435,11 +460,10 @@ export function getBaseUrl(provider: ModelProvider): string {
     case "kilocode": return "https://api.kilocode.com/v1";
     case "opencode": return "https://api.opencode.com/v1";
     case "cline": return "https://api.cline.ai/v1";
-    case "copilot": return "https://api.github.com/copilot/chat"; // GitHub Copilot is different, but this is a placeholder
+    case "copilot": return "https://api.github.com/copilot/chat"; 
     default: return "";
   }
 }
-
 
 export function toolResultToClaudeMessage(
   results: ToolResult[],

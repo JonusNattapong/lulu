@@ -1,14 +1,5 @@
 import { spawn } from "node:child_process";
-import type { ToolDef, ToolCall, ToolResult } from "../types.js";
-
-export interface MCPServer {
-  name: string;
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  transport?: "stdio" | "http";
-  url?: string;
-}
+import type { ToolDef, ToolCall, ToolResult, MCPServer } from "../types.js";
 
 export interface MCPTool {
   server: string;
@@ -37,7 +28,6 @@ export async function loadMCPServers(servers: MCPServer[]): Promise<void> {
     try {
       const client = await createMCPClient(server);
       clients.set(server.name, client);
-      console.error(`[MCP] Loaded server: ${server.name} (${client.tools.length} tools)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[MCP] Failed to load ${server.name}: ${msg}`);
@@ -53,10 +43,12 @@ async function createMCPClient(server: MCPServer): Promise<MCPClient> {
 }
 
 async function createStdioClient(server: MCPServer): Promise<MCPClient> {
-  const proc = spawn(server.command ?? "node", server.args ?? [], {
+  const proc = spawn(server.command!, server.args ?? [], {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, ...server.env },
-  });
+  }) as any;
+
+  let tools: MCPTool[] = [];
 
   const request = async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
     return new Promise((resolve, reject) => {
@@ -64,7 +56,6 @@ async function createStdioClient(server: MCPServer): Promise<MCPClient> {
       const msg = JSON.stringify({ jsonrpc: "2.0", id, method, params });
       
       let buffer = "";
-      
       const onData = (data: Buffer) => {
         buffer += data.toString();
         let newlineIdx;
@@ -77,28 +68,31 @@ async function createStdioClient(server: MCPServer): Promise<MCPClient> {
               if (resp.error) reject(new Error(resp.error.message));
               else resolve(resp.result);
             }
-          } catch {
-            // Skip non-JSON
-          }
+          } catch {}
         }
       };
 
-      (proc.stdout as any)?.on("data", onData);
+      proc.stdout?.on("data", onData);
       proc.stderr?.on("data", (d: Buffer) => console.error(`[MCP ${server.name}]`, d.toString()));
       
-      (proc.stdin as any)?.write(msg + "\n");
+      proc.stdin?.write(msg + "\n");
       
       setTimeout(() => reject(new Error("MCP request timeout")), 30000);
     });
   };
 
-  const resp = await request("tools/list") as { tools: Array<{ name: string; description: string; inputSchema: unknown }> };
-  const tools: MCPTool[] = resp.tools.map((t) => ({
-    server: server.name,
-    name: t.name,
-    description: t.description,
-    input_schema: t.inputSchema as MCPTool["input_schema"],
-  }));
+  try {
+    const resp = await request("tools/list") as { tools: Array<{ name: string; description: string; inputSchema: unknown }> };
+    tools = resp.tools.map((t) => ({
+      server: server.name,
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema as MCPTool["input_schema"],
+    }));
+  } catch (err) {
+    proc.kill();
+    throw err;
+  }
 
   return {
     name: server.name,
@@ -113,7 +107,7 @@ async function createStdioClient(server: MCPServer): Promise<MCPClient> {
       }
     },
     close() {
-      (proc as any).kill();
+      proc.kill();
     },
   };
 }
@@ -159,11 +153,11 @@ async function createHTTPClient(server: MCPServer): Promise<MCPClient> {
 
 export function getMCPTools(): ToolDef[] {
   const toolDefs: ToolDef[] = [];
-  for (const [, client] of clients) {
+  for (const [serverName, client] of clients) {
     for (const tool of client.tools) {
       toolDefs.push({
-        name: `mcp_${tool.server}_${tool.name}`,
-        description: `[MCP:${tool.server}] ${tool.description}`,
+        name: `mcp_${serverName}_${tool.name}`,
+        description: `[MCP:${serverName}] ${tool.description}`,
         input_schema: tool.input_schema,
       });
     }
@@ -189,6 +183,14 @@ export function closeAllMCP(): void {
   clients.clear();
 }
 
-export function getMCPServersLoaded(): string[] {
-  return Array.from(clients.keys());
+export async function addMCPServer(server: MCPServer): Promise<void> {
+  const client = await createMCPClient(server);
+  clients.set(server.name, client);
+}
+
+export function getMCPServersLoaded(): { name: string; tools: number }[] {
+  return Array.from(clients.entries()).map(([name, client]) => ({
+    name,
+    tools: client.tools.length,
+  }));
 }
