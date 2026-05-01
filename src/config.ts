@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import path from "node:path";
-import type { AgentConfig, ModelProvider } from "./types.js";
+import path from "path";
+import type { AgentConfig, ModelProvider, MCPServer } from "./types.js";
 
 const PROVIDERS_DATA = JSON.parse(
   readFileSync(new URL("./providers.json", import.meta.url), "utf-8"),
@@ -28,9 +28,40 @@ function loadClaudeConfigKeys(): Record<string, string> {
   }
 }
 
+function loadMCPServers(): MCPServer[] {
+  const globalPath = path.join(homedir(), ".lulu", "mcp-servers.json");
+  const localPath = path.join(process.cwd(), ".lulu-mcp.json");
+  
+  const servers: MCPServer[] = [];
+  
+  for (const p of [globalPath, localPath]) {
+    if (existsSync(p)) {
+      try {
+        const raw = readFileSync(p, "utf-8");
+        const parsed = JSON.parse(raw);
+        const arr = Array.isArray(parsed) ? parsed : parsed?.servers ?? [];
+        servers.push(...arr);
+      } catch {
+        // Ignore
+      }
+    }
+  }
+  
+  return servers;
+}
+
 const DEFAULT_MODEL = "claude-3-5-sonnet-20241022";
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_SYSTEM_PROMPT = PROVIDERS_DATA.system_prompt;
+
+// Exported for testing only
+export function _parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+export function _loadClaudeConfigKeys(): Record<string, string> { return loadClaudeConfigKeys(); }
+export function _loadMCPServers(): MCPServer[] { return loadMCPServers(); }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | null {
   const claudeKeys = loadClaudeConfigKeys();
@@ -61,6 +92,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | 
 
   const selectedProvider = (env.LULU_PROVIDER as ModelProvider) ?? "claude";
   const config = providers[selectedProvider];
+
+  // Load MCP servers
+  const mcpServers = loadMCPServers();
 
   let systemPrompt = env.LULU_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
   
@@ -108,6 +142,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | 
       maxTokens: parsePositiveInt(env.LULU_MAX_TOKENS, DEFAULT_MAX_TOKENS),
       projectName,
       projectRoot,
+      mcpServers,
     };
   }
 
@@ -116,13 +151,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | 
     model: env.LULU_MODEL ?? config.defaultModel,
     apiKey: config.key,
     systemPrompt,
-    maxTokens: parsePositiveInt(env.LULU_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+    maxTokens: _parsePositiveInt(env.LULU_MAX_TOKENS, DEFAULT_MAX_TOKENS),
     projectName,
     projectRoot,
+    mcpServers,
   };
 }
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
+// Internal helper, also exported for tests
+export function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;

@@ -160,5 +160,49 @@
       },
       "required": ["skills"]
     }
+  },
+  {
+    "name": "semantic_search",
+    "description": "Find files based on natural language meaning and context, rather than exact keywords. Best for discovering relevant code patterns or architecture.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The natural language query (e.g., 'how is authentication handled?')"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "browser_search",
+    "description": "Search the web for information using a search engine. Returns a list of relevant titles and URLs.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The search query (e.g., 'bun elysia documentation')"
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  {
+    "name": "browser_read",
+    "description": "Read the content of a specific web page. Returns the page content as formatted markdown.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The URL of the page to read"
+        }
+      },
+      "required": ["url"]
+    }
   }
 ]

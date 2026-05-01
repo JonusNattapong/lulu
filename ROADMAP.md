@@ -9,15 +9,16 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 - [x] Centralized global config in `~/.lulu/`.
 - [x] JSON-ified configuration and schemas.
 
-## Phase 2: Intelligence & Context (In Progress)
+## Phase 2: Intelligence & Context (Completed)
 - [x] **Project Memory:** Persistent storage of project-specific knowledge.
-- [ ] **Context Window Management:** Automatic summarization of long conversations.
-- [ ] **Semantic Search:** Replace grep with embedding-based file search.
-- [ ] **Auto-Memory:** Allow the agent to autonomously update its project memory.
+- [x] **Context Window Management:** Automatic summarization of long conversations.
+- [x] **Semantic Search:** LLM-powered relevance scoring for file discovery.
+- [x] **Auto-Memory:** Agent autonomously updates memory after tasks.
 
 ## Phase 3: Enhanced UX & Interface
-- [ ] **Rich Terminal UI:** Markdown rendering and syntax highlighting in output.
-- [ ] **Progress Indicators:** Visual feedback for long AI operations.
+- [x] **Rich Terminal UI (v2):** Rebuilt CLI using React and Ink with ASCII Art.
+- [x] **Token & Cost Tracking:** Real-time usage and cost display.
+- [ ] **Progress Indicators:** Detailed visual feedback for tool execution.
 - [ ] **Browser Integration:** Lightweight browser tool for web research.
 
 ## Phase 4: Ecosystem & Integration

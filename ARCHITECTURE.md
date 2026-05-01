@@ -29,7 +29,7 @@ Handles CLI arguments and the interactive REPL. It manages `readline` history an
 Loads settings from environment variables and the global `~/.lulu/config.json`. It also handles **Project Memory** injection by detecting the current project name.
 
 ### 4. Agent Loop (`src/agent/agent.ts`)
-The heartbeat of Lulu. It manages the conversation context and runs up to 10 rounds of tool execution per prompt. Every turn is logged to `~/.lulu/history.jsonl` in JSON format.
+The heartbeat of Lulu. It manages the conversation context and runs up to 10 rounds of tool execution per prompt. It automatically summarizes history when it exceeds 12 messages to preserve the context window.
 
 ### 5. Provider Layer (`src/agent/providers.ts`)
 Normalizes communication between different AI providers (Anthropic, OpenAI, Google, etc.). Configurations for these providers are stored in `src/providers.json`.

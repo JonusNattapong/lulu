@@ -1,4 +1,5 @@
 import type { ToolDef, ToolCall, ToolResult, AgentConfig } from "../types.js";
+import { sendToProvider } from "./providers.js";
 import { execSync } from "child_process";
 import { homedir } from "os";
 import {
@@ -10,13 +11,16 @@ import {
 } from "fs";
 import path from "path";
 
+import { chromium } from "playwright";
+import TurndownService from "turndown";
+
 export const BUILTIN_TOOLS: ToolDef[] = JSON.parse(
   readFileSync(new URL("./tools_schema.json", import.meta.url), "utf-8"),
 );
 
-export function executeTool(call: ToolCall, config: AgentConfig): ToolResult {
+export async function executeTool(call: ToolCall, config: AgentConfig): Promise<ToolResult> {
   try {
-    const result = executeToolImpl(call, config);
+    const result = await executeToolImpl(call, config);
     return { tool_use_id: call.id, content: result };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -24,7 +28,7 @@ export function executeTool(call: ToolCall, config: AgentConfig): ToolResult {
   }
 }
 
-function executeToolImpl(call: ToolCall, config: AgentConfig): string {
+async function executeToolImpl(call: ToolCall, config: AgentConfig): Promise<string> {
   switch (call.name) {
     case "read_file": {
       const fp = call.input.file_path as string;
@@ -136,18 +140,89 @@ function executeToolImpl(call: ToolCall, config: AgentConfig): string {
       writeFileSync(skillsPath, JSON.stringify(newSkills, null, 2), "utf-8");
       return "Global skill library updated and curated.";
     }
+    case "browser_search": {
+      const { query } = call.input as { query: string };
+      const browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage();
+      try {
+        // Simple search using DuckDuckGo (easier to scrape than Google)
+        await page.goto(`https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
+        const results = await page.$$eval('.result', (elements) => {
+          return elements.slice(0, 5).map(el => {
+            const title = el.querySelector('.result__a')?.textContent || "";
+            const link = el.querySelector('.result__a')?.getAttribute('href') || "";
+            const snippet = el.querySelector('.result__snippet')?.textContent || "";
+            return `Title: ${title}\nURL: ${link}\nSnippet: ${snippet}\n`;
+          });
+        });
+        return results.length > 0 ? results.join("\n---\n") : "No search results found.";
+      } catch (err) {
+        return `Search failed: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        await browser.close();
+      }
+    }
+    case "browser_read": {
+      const { url } = call.input as { url: string };
+      const browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage();
+      const turndown = new TurndownService();
+      try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        const html = await page.content();
+        const markdown = turndown.turndown(html);
+        return markdown.slice(0, 20000); // Limit to 20k chars
+      } catch (err) {
+        return `Reading failed: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        await browser.close();
+      }
+    }
+    case "semantic_search": {
+      const { query } = call.input as { query: string };
+      const files = await listFilesRecursive(process.cwd());
+      
+      // Use the model to pick relevant files (Semantic Phase)
+      const prompt = `Given the project file list below and the query "${query}", identify the top 5 most relevant files that likely contain the answer or implementation details. Output ONLY a JSON array of strings (file paths).
+      
+      Files:
+      ${files.slice(0, 500).join("\n")}`;
+
+const response = await sendToProvider(config, [{ role: "user", content: prompt }], []);
+      try {
+        const matches = JSON.parse(response.text.match(/\[.*\]/s)?.[0] || "[]") as string[];
+        return matches.length > 0
+          ? `Semantic matches for "${query}":\n${matches.map(f => `- ${f}`).join("\n")}`
+          : "No semantically relevant files found.";
+      } catch {
+        return "Error parsing semantic search results. Falling back to keyword search...";
+      }
+    }
     default:
       return `Unknown tool: ${call.name}`;
   }
 }
 
-function wildcardMatch(value: string, pattern: string): boolean {
+async function listFilesRecursive(dir: string): Promise<string[]> {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const files = await Promise.all(entries.map(async (entry) => {
+    const res = path.resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') return [];
+      return listFilesRecursive(res);
+    }
+    return [path.relative(process.cwd(), res)];
+  }));
+  return files.flat();
+}
+
+export function wildcardMatch(value: string, pattern: string): boolean {
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
   const regex = new RegExp(`^${escaped.replaceAll("*", ".*")}$`);
   return regex.test(value);
 }
 
-function searchFiles(
+export function searchFiles(
   dir: string,
   regex: RegExp,
   globFilter: string | undefined,

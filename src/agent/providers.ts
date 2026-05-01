@@ -16,17 +16,40 @@ function toolsToAnthropic(
   }));
 }
 
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costEstimate: number;
+}
+
 export interface AgentResponse {
   text: string;
   toolCalls: ToolCall[];
   stopReason: string;
+  usage: Usage;
 }
 
 export interface StreamEvent {
-  type: "text_delta" | "text_end" | "tool_use";
+  type: "text_delta" | "text_end" | "tool_use" | "usage";
   text?: string;
   toolCalls?: ToolCall[];
   stopReason?: string;
+  usage?: Usage;
+}
+
+export function calculateCost(model: string, input: number, output: number): number {
+  // Rough estimate per 1M tokens (Price in USD)
+  const rates: Record<string, { in: number, out: number }> = {
+    "claude-3-5-sonnet-20241022": { in: 3, out: 15 },
+    "claude-3-5-haiku-20241022": { in: 0.25, out: 1.25 },
+    "gpt-4o": { in: 2.5, out: 10 },
+    "gpt-4o-mini": { in: 0.15, out: 0.6 },
+    "deepseek-chat": { in: 0.14, out: 0.28 },
+  };
+
+  const rate = rates[model] || { in: 0, out: 0 };
+  return (input * rate.in + output * rate.out) / 1_000_000;
 }
 
 export async function* sendToProviderStream(
@@ -82,45 +105,73 @@ async function* streamClaude(
 ): AsyncGenerator<StreamEvent> {
   const client = new Anthropic({ apiKey: config.apiKey });
   let fullText = "";
+  let toolCalls: ToolCall[] = [];
+  let stopReason = "end_turn";
 
-  const stream = client.messages
-    .stream({
-      model: config.model,
-      max_tokens: config.maxTokens,
-      system: config.systemPrompt,
-      messages,
-      tools: toolsToAnthropic(tools),
-    })
-    .on("text", (text) => {
-      fullText += text;
-      process.stdout.write(text);
-    });
+  const stream = await client.messages.create({
+    model: config.model,
+    max_tokens: config.maxTokens,
+    system: config.systemPrompt,
+    messages,
+    tools: toolsToAnthropic(tools),
+    stream: true,
+  });
 
-  const final = await stream.finalMessage();
+  const toolCallAccum: Map<number, { id: string; name: string; input: string }> = new Map();
 
-  const toolCalls: ToolCall[] = [];
-  let finalText = "";
-
-  for (const block of final.content) {
-    switch (block.type) {
-      case "text":
-        finalText += (finalText ? "\n" : "") + block.text;
+  for await (const chunk of stream) {
+    switch (chunk.type) {
+      case "content_block_delta":
+        if (chunk.delta.type === "text_delta") {
+          fullText += chunk.delta.text;
+          yield { type: "text_delta", text: chunk.delta.text };
+        } else if (chunk.delta.type === "input_json_delta") {
+          const idx = (chunk as any).index ?? 0;
+          const entry = toolCallAccum.get(idx);
+          if (entry) entry.input += chunk.delta.partial_json;
+        }
         break;
-      case "tool_use":
-        toolCalls.push({
-          id: block.id,
-          name: block.name,
-          input: block.input as Record<string, unknown>,
-        });
+      case "content_block_start":
+        if (chunk.content_block.type === "tool_use") {
+          const idx = (chunk as any).index ?? 0;
+          toolCallAccum.set(idx, {
+            id: chunk.content_block.id,
+            name: chunk.content_block.name,
+            input: "",
+          });
+        }
+        break;
+      case "message_delta":
+        if (chunk.delta.stop_reason) stopReason = chunk.delta.stop_reason;
+        break;
+      case "message_start":
+        if (chunk.message.usage) {
+          yield {
+            type: "usage",
+            usage: {
+              inputTokens: chunk.message.usage.input_tokens,
+              outputTokens: chunk.message.usage.output_tokens,
+              totalTokens: chunk.message.usage.input_tokens + chunk.message.usage.output_tokens,
+              costEstimate: calculateCost(config.model, chunk.message.usage.input_tokens, chunk.message.usage.output_tokens)
+            }
+          };
+        }
         break;
     }
   }
 
-  const text = finalText || fullText;
-  yield { type: "text_end", text };
+  yield { type: "text_end", text: fullText };
+
+  for (const [, acc] of toolCallAccum) {
+    toolCalls.push({
+      id: acc.id,
+      name: acc.name,
+      input: JSON.parse(acc.input || "{}"),
+    });
+  }
 
   if (toolCalls.length > 0) {
-    yield { type: "tool_use", toolCalls, stopReason: final.stop_reason ?? "end_turn" };
+    yield { type: "tool_use", toolCalls, stopReason };
   }
 }
 
@@ -161,6 +212,12 @@ async function sendToClaude(
     text: textBlocks.join("\n"),
     toolCalls,
     stopReason: resp.stop_reason ?? "end_turn",
+    usage: {
+      inputTokens: resp.usage.input_tokens,
+      outputTokens: resp.usage.output_tokens,
+      totalTokens: resp.usage.input_tokens + resp.usage.output_tokens,
+      costEstimate: calculateCost(config.model, resp.usage.input_tokens, resp.usage.output_tokens)
+    }
   };
 }
 
@@ -221,7 +278,13 @@ async function sendToOpenAICompatible(
   return {
     text: message.content || "",
     toolCalls,
-    stopReason: choice.finish_reason
+    stopReason: choice.finish_reason,
+    usage: {
+      inputTokens: data.usage.prompt_tokens,
+      outputTokens: data.usage.completion_tokens,
+      totalTokens: data.usage.total_tokens,
+      costEstimate: calculateCost(config.model, data.usage.prompt_tokens, data.usage.completion_tokens)
+    }
   };
 }
 
@@ -261,7 +324,7 @@ async function* streamOpenAICompatible(
       })),
       max_tokens: config.maxTokens,
       stream: true,
-      stream_options: { include_usage: false },
+      stream_options: { include_usage: true },
     })
   });
 
@@ -277,6 +340,7 @@ async function* streamOpenAICompatible(
   let fullText = "";
   const toolCallAccum: Map<number, { id: string; name: string; args: string }> = new Map();
   let buffer = "";
+  let finalUsage: Usage | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -294,12 +358,24 @@ async function* streamOpenAICompatible(
 
       try {
         const chunk = JSON.parse(jsonStr);
-        const delta = chunk.choices?.[0]?.delta;
+        
+        if (chunk.usage) {
+          finalUsage = {
+            inputTokens: chunk.usage.prompt_tokens,
+            outputTokens: chunk.usage.completion_tokens,
+            totalTokens: chunk.usage.total_tokens,
+            costEstimate: calculateCost(config.model, chunk.usage.prompt_tokens, chunk.usage.completion_tokens)
+          };
+          continue;
+        }
+
+        const choice = chunk.choices?.[0];
+        const delta = choice?.delta;
         if (!delta) continue;
 
         if (delta.content) {
           fullText += delta.content;
-          process.stdout.write(delta.content);
+          yield { type: "text_delta", text: delta.content };
         }
 
         // Accumulate tool calls
@@ -328,6 +404,10 @@ async function* streamOpenAICompatible(
 
   yield { type: "text_end", text: fullText };
 
+  if (finalUsage) {
+    yield { type: "usage", usage: finalUsage };
+  }
+
   const toolCalls: ToolCall[] = [];
   for (const [, acc] of toolCallAccum) {
     try {
@@ -346,7 +426,7 @@ async function* streamOpenAICompatible(
   }
 }
 
-function getBaseUrl(provider: ModelProvider): string {
+export function getBaseUrl(provider: ModelProvider): string {
   switch (provider) {
     case "openrouter": return "https://openrouter.ai/api/v1";
     case "deepseek": return "https://api.deepseek.com";

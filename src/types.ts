@@ -34,6 +34,15 @@ export type ModelProvider =
   | "copilot"
   | "deepseek";
 
+export interface MCPServer {
+  name: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  transport?: "stdio" | "http";
+  url?: string;
+}
+
 export interface AgentConfig {
   provider: ModelProvider;
   model: string;
@@ -42,4 +51,5 @@ export interface AgentConfig {
   maxTokens: number;
   projectName?: string;
   projectRoot?: string;
+  mcpServers?: MCPServer[];
 }

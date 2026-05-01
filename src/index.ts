@@ -34,6 +34,15 @@ function saveHistory(history: string[]): void {
   }
 }
 
+function formatOutput(text: string): string {
+  // Simple syntax highlighting for code blocks
+  return text.replace(/```([\s\S]*?)```/g, (match, code) => {
+    return pc.bgBlack(pc.white(match));
+  }).replace(/\*\*(.*?)\*\*/g, (match, bold) => {
+    return pc.bold(pc.yellow(match));
+  });
+}
+
 async function checkCuration(config: any) {
   const skillsPath = path.join(homedir(), ".lulu", "skills.json");
   if (!existsSync(skillsPath)) return;
@@ -85,7 +94,7 @@ async function runOnboarding(): Promise<void> {
 }
 
 function printHelp(): void {
-  console.log(pc.cyan(pc.bold("\n--- LULU AI v0.0.3 HELP ---")));
+  console.log(pc.cyan(pc.bold("\n--- LULU AI v0.0.4 HELP ---")));
   console.log(`
 Usage:
   lulu "summarize this project"   One-shot execution
@@ -117,7 +126,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(pc.cyan(pc.bold("\n--- LULU AI v0.0.3 ---")));
+  console.log(pc.cyan(pc.bold("\n--- LULU AI v0.0.4 ---")));
   console.log(pc.dim("Autonomous Coding Assistant\n"));
 
   let config = loadConfig();
@@ -135,7 +144,7 @@ async function main(): Promise<void> {
   const firstPrompt = args.join(" ").trim();
 
   if (firstPrompt) {
-    const result = await runAgent(config, firstPrompt, [], (t) => process.stdout.write(t));
+    const result = await runAgent(config, firstPrompt, [], (t) => process.stdout.write(formatOutput(t)));
     return;
   }
 
@@ -159,11 +168,11 @@ async function main(): Promise<void> {
 
       if (inputLine === "/curate") {
         console.log(pc.yellow("\n[Curator] Analyzing and optimizing your skill library..."));
-        await runAgent(config, "Please curate my skills library now using curate_skills tool.", context, (t) => process.stdout.write(t));
+        await runAgent(config, "Please curate my skills library now using curate_skills tool.", context, (t) => process.stdout.write(formatOutput(t)));
         continue;
       }
 
-      const result = await runAgent(config, inputLine, context, (t) => process.stdout.write(t));
+      const result = await runAgent(config, inputLine, context, (t) => process.stdout.write(formatOutput(t)));
       context.splice(0, context.length, ...result.messages);
     }
   } finally {
