@@ -104,6 +104,38 @@ function executeToolImpl(call: ToolCall, config: AgentConfig): string {
       writeFileSync(memoryPath, JSON.stringify(jsonContent, null, 2), "utf-8");
       return `Memory updated for project: ${config.projectName} (JSON format)`;
     }
+    case "save_skill": {
+      const skillsDir = path.join(homedir(), ".lulu");
+      if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
+      const skillsPath = path.join(skillsDir, "skills.json");
+      
+      let skills: Record<string, any> = {};
+      if (existsSync(skillsPath)) {
+        try {
+          skills = JSON.parse(readFileSync(skillsPath, "utf-8"));
+        } catch { /* ignore */ }
+      }
+
+      const { name, description, steps } = call.input as { name: string; description: string; steps: string };
+      skills[name] = { description, steps, savedAt: new Date().toISOString() };
+      
+      writeFileSync(skillsPath, JSON.stringify(skills, null, 2), "utf-8");
+      return `Skill '${name}' saved to global library.`;
+    }
+    case "curate_skills": {
+      const skillsPath = path.join(homedir(), ".lulu", "skills.json");
+      if (!existsSync(skillsPath)) return "No skills found to curate.";
+      const skills = readFileSync(skillsPath, "utf-8");
+      return `Current Skills Library:\n${skills}\n\nINSTRUCTION: Review the library. Merge duplicates, improve descriptions, and prune low-quality skills. Once finished, use 'update_skills_batch' to save the new library.`;
+    }
+    case "update_skills_batch": {
+      const skillsDir = path.join(homedir(), ".lulu");
+      if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
+      const skillsPath = path.join(skillsDir, "skills.json");
+      const newSkills = call.input.skills as object;
+      writeFileSync(skillsPath, JSON.stringify(newSkills, null, 2), "utf-8");
+      return "Global skill library updated and curated.";
+    }
     default:
       return `Unknown tool: ${call.name}`;
   }

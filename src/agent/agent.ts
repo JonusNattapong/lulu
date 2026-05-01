@@ -19,6 +19,7 @@ export async function runAgent(
   config: AgentConfig,
   userMessage: string,
   context: MessageParam[] = [],
+  onText?: (text: string) => void,
 ): Promise<{ messages: MessageParam[]; finalText: string }> {
   const messages: MessageParam[] = [
     ...context,
@@ -50,7 +51,7 @@ export async function runAgent(
     if (toolCalls.length === 0) {
       if (text) {
         messages.push({ role: "assistant" as const, content: text });
-        process.stdout.write("\n");
+        if (onText) onText(text + "\n");
       }
       return { messages, finalText: "" };
     }

@@ -23,6 +23,7 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 ## Phase 4: Ecosystem & Integration
 - [ ] **MCP Support:** Integrate with Model Context Protocol servers.
 - [ ] **Plugin System:** Allow users to add custom tools via external JSON/JS files.
+- [x] **Elysia Server:** High-performance API layer built with Bun.
 - [ ] **Web Dashboard:** A local web UI to complement the CLI experience.
 
 ## Future Vision

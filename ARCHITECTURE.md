@@ -17,19 +17,24 @@ graph TD
 
 ## Core Modules
 
-### 1. Entry Point (`src/index.ts`)
+### 1. API Server (`src/server.ts`)
+A high-performance web server built with **Elysia** and **Bun**. It exposes endpoints for:
+- `POST /prompt`: Trigger the AI agent.
+- `GET /history`: Retrieve global conversation logs.
+
+### 2. Entry Point (`src/index.ts`)
 Handles CLI arguments and the interactive REPL. It manages `readline` history and initializes the configuration.
 
-### 2. Configuration (`src/config.ts`)
+### 3. Configuration (`src/config.ts`)
 Loads settings from environment variables and the global `~/.lulu/config.json`. It also handles **Project Memory** injection by detecting the current project name.
 
-### 3. Agent Loop (`src/agent/agent.ts`)
+### 4. Agent Loop (`src/agent/agent.ts`)
 The heartbeat of Lulu. It manages the conversation context and runs up to 10 rounds of tool execution per prompt. Every turn is logged to `~/.lulu/history.jsonl` in JSON format.
 
-### 4. Provider Layer (`src/agent/providers.ts`)
+### 5. Provider Layer (`src/agent/providers.ts`)
 Normalizes communication between different AI providers (Anthropic, OpenAI, Google, etc.). Configurations for these providers are stored in `src/providers.json`.
 
-### 5. Tool System (`src/agent/tools.ts`)
+### 6. Tool System (`src/agent/tools.ts`)
 Implements capabilities like reading/writing files, running commands, and updating project memory. Tool schemas are defined in `src/agent/tools_schema.json`.
 
 ## Data Storage (`~/.lulu/`)

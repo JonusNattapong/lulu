@@ -110,5 +110,55 @@
       },
       "required": ["content"]
     }
+  },
+  {
+    "name": "save_skill",
+    "description": "Save a reusable skill or workflow pattern learned during task completion for future use.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Short, descriptive name of the skill (e.g., 'setup-elysia-cors')"
+        },
+        "description": {
+          "type": "string",
+          "description": "What this skill does and when to use it."
+        },
+        "steps": {
+          "type": "string",
+          "description": "Step-by-step instructions or code snippets for this skill."
+        }
+      },
+      "required": ["name", "description", "steps"]
+    }
+  },
+  {
+    "name": "curate_skills",
+    "description": "Trigger the Lulu Curator to analyze, merge, and prune the global skill library for better performance and quality.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Why are you triggering curation? (e.g., 'Too many overlapping skills')"
+        }
+      },
+      "required": ["reason"]
+    }
+  },
+  {
+    "name": "update_skills_batch",
+    "description": "Overwrite the entire global skill library with a new, curated set of skills.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "skills": {
+          "type": "object",
+          "description": "The complete skills object (Record<string, Skill>)"
+        }
+      },
+      "required": ["skills"]
+    }
   }
 ]

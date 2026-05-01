@@ -32,7 +32,7 @@ const DEFAULT_MODEL = "claude-3-5-sonnet-20241022";
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_SYSTEM_PROMPT = PROVIDERS_DATA.system_prompt;
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig | null {
   const claudeKeys = loadClaudeConfigKeys();
   const mergedEnv: Record<string, string | undefined> = { ...claudeKeys, ...env };
 
@@ -78,15 +78,27 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     }
   }
 
+  // Inject Global Skills
+  const skillsPath = path.join(homedir(), ".lulu", "skills.json");
+  if (existsSync(skillsPath)) {
+    try {
+      const skillsRaw = readFileSync(skillsPath, "utf-8");
+      if (skillsRaw.trim()) {
+        const skills = JSON.parse(skillsRaw);
+        systemPrompt += `\n\n# Global Skills (Learned Patterns):\n${JSON.stringify(skills, null, 2)}`;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
   if (!config || !config.key) {
     // If selected provider is not available, try to find the first one that has a key
     const firstAvailable = (Object.keys(providers) as ModelProvider[]).find(
       (p) => providers[p].key,
     );
     if (!firstAvailable) {
-      throw new Error(
-        "No API keys found. Please set ANTHROPIC_API_KEY or another provider key in your environment, or configure ~/.lulu/config.json.",
-      );
+      return null; // Signals missing config for onboarding
     }
     return {
       provider: firstAvailable,

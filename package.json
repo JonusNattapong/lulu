@@ -1,6 +1,6 @@
 {
   "name": "luluai",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "license": "MIT",
   "description": "A small personal AI assistant for working with local files.",
   "type": "module",
@@ -16,12 +16,17 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "dev": "node --loader ts-node/esm src/index.ts",
-    "start": "node dist/index.js",
-    "lulu": "tsc && node dist/index.js"
+    "dev": "bun src/index.ts",
+    "start": "bun dist/index.js",
+    "lulu": "bun src/index.ts",
+    "server": "bun src/server.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0"
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@elysiajs/cors": "^1.4.2",
+    "@elysiajs/swagger": "^1.3.1",
+    "elysia": "^1.4.28",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",

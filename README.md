@@ -46,7 +46,9 @@ Configure your keys via environment variables or the global config file at `~/.l
 ```sh
 npm run lulu
 ```
-*Use `/exit` or `/quit` to terminate the session.*
+- `/curate`: Optimize your global skill library.
+- `/help`: Show available commands and environment variables.
+- `/exit` or `/quit`: End the session.
 
 ### Single Prompt Execution
 ```sh
