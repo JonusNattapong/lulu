@@ -1,5 +1,6 @@
-import type { ToolDef, ToolCall, ToolResult } from "../types.js";
+import type { ToolDef, ToolCall, ToolResult, AgentConfig } from "../types.js";
 import { execSync } from "child_process";
+import { homedir } from "os";
 import {
   existsSync,
   mkdirSync,
@@ -9,112 +10,13 @@ import {
 } from "fs";
 import path from "path";
 
-export const BUILTIN_TOOLS: ToolDef[] = [
-  {
-    name: "read_file",
-    description:
-      "Read the contents of a file. Returns the file content with line numbers.",
-    input_schema: {
-      type: "object",
-      properties: {
-        file_path: {
-          type: "string",
-          description: "Absolute path to the file to read",
-        },
-        offset: {
-          type: "integer",
-          description: "Line number to start reading from (optional)",
-        },
-        limit: {
-          type: "integer",
-          description: "Maximum number of lines to read (optional)",
-        },
-      },
-      required: ["file_path"],
-    },
-  },
-  {
-    name: "write_file",
-    description: "Write content to a file. Creates or overwrites the file.",
-    input_schema: {
-      type: "object",
-      properties: {
-        file_path: {
-          type: "string",
-          description: "Absolute path to the file to write",
-        },
-        content: {
-          type: "string",
-          description: "Content to write to the file",
-        },
-      },
-      required: ["file_path", "content"],
-    },
-  },
-  {
-    name: "list_files",
-    description: "List files in a directory.",
-    input_schema: {
-      type: "object",
-      properties: {
-        dir_path: {
-          type: "string",
-          description: "Absolute path to the directory to list",
-        },
-        pattern: {
-          type: "string",
-          description: "Optional glob pattern to filter files (e.g., '*.ts')",
-        },
-      },
-      required: ["dir_path"],
-    },
-  },
-  {
-    name: "run_command",
-    description:
-      "Run a shell command and return its output. Use with caution.",
-    input_schema: {
-      type: "object",
-      properties: {
-        command: {
-          type: "string",
-          description: "The shell command to execute",
-        },
-        description: {
-          type: "string",
-          description: "Brief description of what the command does",
-        },
-      },
-      required: ["command"],
-    },
-  },
-  {
-    name: "search_content",
-    description: "Search for a regex pattern in files within a directory.",
-    input_schema: {
-      type: "object",
-      properties: {
-        pattern: {
-          type: "string",
-          description: "Regular expression pattern to search for",
-        },
-        path: {
-          type: "string",
-          description: "Directory or file to search in",
-        },
-        glob: {
-          type: "string",
-          description: "Optional file glob filter (e.g., '*.ts')",
-        },
-      },
-      required: ["pattern", "path"],
-    },
-  },
-];
+export const BUILTIN_TOOLS: ToolDef[] = JSON.parse(
+  readFileSync(new URL("./tools_schema.json", import.meta.url), "utf-8"),
+);
 
-export function executeTool(call: ToolCall): ToolResult {
+export function executeTool(call: ToolCall, config: AgentConfig): ToolResult {
   try {
-    const result = executeToolImpl(call);
+    const result = executeToolImpl(call, config);
     return { tool_use_id: call.id, content: result };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -122,7 +24,7 @@ export function executeTool(call: ToolCall): ToolResult {
   }
 }
 
-function executeToolImpl(call: ToolCall): string {
+function executeToolImpl(call: ToolCall, config: AgentConfig): string {
   switch (call.name) {
     case "read_file": {
       const fp = call.input.file_path as string;
@@ -184,6 +86,23 @@ function executeToolImpl(call: ToolCall): string {
         const msg = err instanceof Error ? err.message : String(err);
         return `Search error: ${msg}`;
       }
+    }
+    case "update_memory": {
+      if (!config.projectName) return "Error: Project name not detected.";
+      const memoryDir = path.join(homedir(), ".lulu", "projects", config.projectName);
+      if (!existsSync(memoryDir)) {
+        mkdirSync(memoryDir, { recursive: true });
+      }
+      const memoryPath = path.join(memoryDir, "memory.json");
+      const content = call.input.content;
+      let jsonContent: any;
+      try {
+        jsonContent = typeof content === "string" ? JSON.parse(content) : content;
+      } catch {
+        jsonContent = { notes: content };
+      }
+      writeFileSync(memoryPath, JSON.stringify(jsonContent, null, 2), "utf-8");
+      return `Memory updated for project: ${config.projectName} (JSON format)`;
     }
     default:
       return `Unknown tool: ${call.name}`;

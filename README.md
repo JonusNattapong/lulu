@@ -1,79 +1,87 @@
 # Lulu
 
-Lulu is a small personal AI assistant for working with local projects from the
-terminal. The first release focuses on a simple Claude-backed agent that can read
-files, list directories, search content, and optionally make local changes when
-you explicitly enable those tools.
+Lulu is an autonomous, AI-first coding assistant designed for local development. It understands your codebase, remembers decisions through persistent memory, and executes complex workflows across multiple AI providers.
 
-## Status
+---
 
-`v0.0.1` is an early development release. It is useful for local experiments, but
-the tool surface is intentionally conservative.
+## Key Features
 
-## Requirements
+- **Autonomous Agent Loop:** Performs multi-round reasoning to solve complex development tasks.
+- **Project Memory:** Persistent structured knowledge about your codebase stored in `~/.lulu/projects/`.
+- **Multi-Provider Support:** Seamless integration with Anthropic, OpenAI, Google Gemini, DeepSeek, and others.
+- **Global Storage:** Centralized configuration and history in `~/.lulu/` (home directory).
+- **Agent-Optimized:** Built-in `.claude` instructions and modular rules for optimized AI performance.
+- **JSON-First Configuration:** Internal schemas and settings use JSON for simplified extensibility.
 
+---
+
+## Quick Start
+
+### Prerequisites
 - Node.js 22 or newer
-- npm
-- An Anthropic API key
+- npm or pnpm
 
-## Setup
-
+### Installation
 ```sh
-export ANTHROPIC_API_KEY="your_api_key"
 npm install
 npm run build
 ```
 
-PowerShell:
-
-```powershell
-$env:ANTHROPIC_API_KEY="your_api_key"
-npm install
-npm run build
+### API Configuration
+Configure your keys via environment variables or the global config file at `~/.lulu/config.json`:
+```json
+{
+  "apiKeys": {
+    "anthropic": "your-key-here",
+    "openai": "your-key-here"
+  }
+}
 ```
+
+---
 
 ## Usage
 
-Run one prompt:
-
-```sh
-npm run lulu -- "summarize this project"
-```
-
-Start an interactive session:
-
+### Interactive REPL
 ```sh
 npm run lulu
 ```
+*Use `/exit` or `/quit` to terminate the session.*
 
-Leave interactive mode with `/exit`.
+### Single Prompt Execution
+```sh
+npm run lulu -- "Explain the architecture of this project"
+```
+
+---
 
 ## Configuration
 
-Lulu reads configuration from environment variables:
+Lulu is customizable via environment variables and `~/.lulu/config.json`:
 
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | Yes | - | Claude API key |
-| `LULU_MODEL` | No | `claude-3-5-sonnet-20241022` | Claude model |
-| `LULU_MAX_TOKENS` | No | `4096` | Maximum response tokens |
-| `LULU_SYSTEM_PROMPT` | No | Built in | System prompt override |
-| `LULU_ALLOW_WRITE` | No | `false` | Set to `true` to enable `write_file` |
-| `LULU_ALLOW_COMMAND` | No | `false` | Set to `true` to enable `run_command` |
+| Variable | Description | Default |
+| --- | --- | --- |
+| `LULU_PROVIDER` | AI Service Provider | `claude` |
+| `LULU_MODEL` | Specific Model ID | Provider Default |
+| `LULU_ALLOW_WRITE` | Enable `write_file` tool | `false` |
+| `LULU_ALLOW_COMMAND`| Enable `run_command` tool | `false` |
+
+---
+
+## Project Documentation
+
+Detailed guides for contributors and system understanding:
+- [ARCHITECTURE.md](./ARCHITECTURE.md): System design and data flow.
+- [CONTRIBUTING.md](./CONTRIBUTING.md): Guidelines for adding tools and providers.
+- [ROADMAP.md](./ROADMAP.md): Future goals and development phases.
+- [DECISIONS.md](./DECISIONS.md): Record of architectural decisions.
+
+---
 
 ## Safety
+By default, Lulu operates in Read-Only mode. To enable file modifications or command execution, set `LULU_ALLOW_WRITE=true` and `LULU_ALLOW_COMMAND=true` in your environment.
 
-By default, Lulu can inspect files but cannot write files or run shell commands.
-Enable those tools only in repositories and directories you trust:
+---
 
-```sh
-LULU_ALLOW_WRITE=true LULU_ALLOW_COMMAND=true npm run lulu
-```
-
-## Development
-
-```sh
-npm run typecheck
-npm run build
-npm run dev -- "what files are in src?"
-```
+## License
+MIT

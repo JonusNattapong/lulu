@@ -1,0 +1,10 @@
+{
+  "tools": {
+    "allow_write": true,
+    "allow_command": false
+  },
+  "model": {
+    "default_provider": "claude",
+    "max_tokens": 4096
+  }
+}

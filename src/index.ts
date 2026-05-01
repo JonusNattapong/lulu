@@ -1,12 +1,36 @@
 #!/usr/bin/env node
 import { stdin as input, stdout as output } from "node:process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import readline from "node:readline/promises";
 import { loadConfig } from "./config.js";
 import { runAgent } from "./agent/agent.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 
+const HISTORY_FILE = path.join(homedir(), ".lulu", "history");
+const HISTORY_LIMIT = 100;
+
+function loadHistory(): string[] {
+  try {
+    if (!existsSync(HISTORY_FILE)) return [];
+    const content = readFileSync(HISTORY_FILE, "utf-8");
+    return content.split("\n").filter(Boolean).slice(-HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(history: string[]): void {
+  try {
+    writeFileSync(HISTORY_FILE, history.slice(-HISTORY_LIMIT).join("\n") + "\n", "utf-8");
+  } catch {
+    // Ignore
+  }
+}
+
 function printHelp(): void {
-  console.log(`lulu v0.0.1
+  console.log(`lulu v0.0.2
 
 Usage:
   lulu "summarize this project"
@@ -39,14 +63,15 @@ async function main(): Promise<void> {
 
   if (firstPrompt) {
     const result = await runAgent(config, firstPrompt);
-    if (result.finalText) console.log(result.finalText);
+    if (result.finalText) process.stdout.write(result.finalText + "\n");
     return;
   }
 
-  const rl = readline.createInterface({ input, output });
+  const history = loadHistory();
+  const rl = readline.createInterface({ input, output, history });
   const context: MessageParam[] = [];
 
-  console.log("Lulu v0.0.1. Type /exit to quit.");
+  console.log("Lulu v0.0.2. Type /exit to quit.");
 
   try {
     while (true) {
@@ -56,9 +81,10 @@ async function main(): Promise<void> {
 
       const result = await runAgent(config, prompt, context);
       context.splice(0, context.length, ...result.messages);
-      if (result.finalText) console.log(result.finalText);
+      if (result.finalText) process.stdout.write(result.finalText + "\n");
     }
   } finally {
+    saveHistory((rl as any).history ?? []);
     rl.close();
   }
 }

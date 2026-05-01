@@ -40,4 +40,6 @@ export interface AgentConfig {
   apiKey: string;
   systemPrompt: string;
   maxTokens: number;
+  projectName?: string;
+  projectRoot?: string;
 }

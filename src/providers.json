@@ -1,0 +1,27 @@
+{
+  "config_map": {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "kilocode": "KILOCODE_API_KEY",
+    "opencode": "OPENCODE_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "cline": "CLINE_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "copilot": "COPILOT_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY"
+  },
+  "defaults": {
+    "claude": { "defaultModel": "claude-3-5-sonnet-20241022" },
+    "openai": { "defaultModel": "gpt-4o" },
+    "google": { "defaultModel": "gemini-1.5-pro" },
+    "kilocode": { "defaultModel": "kilocode-1" },
+    "opencode": { "defaultModel": "opencode-1" },
+    "openrouter": { "defaultModel": "anthropic/claude-3.5-sonnet" },
+    "cline": { "defaultModel": "cline-1" },
+    "mistral": { "defaultModel": "mistral-large-latest" },
+    "copilot": { "defaultModel": "copilot-1" },
+    "deepseek": { "defaultModel": "deepseek-chat" }
+  },
+  "system_prompt": "You are Lulu, a careful personal AI assistant. You help the user inspect and understand local projects. Prefer reading and searching before making changes. Explain risky actions before asking the user to enable them."
+}

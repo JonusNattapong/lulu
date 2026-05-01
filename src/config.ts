@@ -1,34 +1,82 @@
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import type { AgentConfig, ModelProvider } from "./types.js";
+
+const PROVIDERS_DATA = JSON.parse(
+  readFileSync(new URL("./providers.json", import.meta.url), "utf-8"),
+);
+
+const CLAUDE_CONFIG_MAP: Record<string, string> = PROVIDERS_DATA.config_map;
+
+function loadClaudeConfigKeys(): Record<string, string> {
+  const configPath = path.join(homedir(), ".lulu", "config.json");
+  try {
+    if (!existsSync(configPath)) return {};
+    const raw = readFileSync(configPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    const apiKeys: Record<string, string> = parsed?.apiKeys ?? {};
+    const result: Record<string, string> = {};
+    for (const [claudeKey, envName] of Object.entries(CLAUDE_CONFIG_MAP)) {
+      if (apiKeys[claudeKey]) {
+        result[envName] = apiKeys[claudeKey];
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
 
 const DEFAULT_MODEL = "claude-3-5-sonnet-20241022";
 const DEFAULT_MAX_TOKENS = 4096;
-const DEFAULT_SYSTEM_PROMPT = `You are Lulu, a careful personal AI assistant.
-You help the user inspect and understand local projects.
-Prefer reading and searching before making changes.
-Explain risky actions before asking the user to enable them.`;
+const DEFAULT_SYSTEM_PROMPT = PROVIDERS_DATA.system_prompt;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
-  const providers: Record<ModelProvider, { key?: string; defaultModel: string }> = {
-    claude: {
-      key: env.ANTHROPIC_API_KEY,
-      defaultModel: "claude-3-5-sonnet-20241022",
-    },
-    openai: { key: env.OPENAI_API_KEY, defaultModel: "gpt-4o" },
-    google: { key: env.GOOGLE_API_KEY, defaultModel: "gemini-1.5-pro" },
-    kilocode: { key: env.KILOCODE_API_KEY, defaultModel: "kilocode-1" },
-    opencode: { key: env.OPENCODE_API_KEY, defaultModel: "opencode-1" },
-    openrouter: {
-      key: env.OPENROUTER_API_KEY,
-      defaultModel: "anthropic/claude-3.5-sonnet",
-    },
-    cline: { key: env.CLINE_API_KEY, defaultModel: "cline-1" },
-    mistral: { key: env.MISTRAL_API_KEY, defaultModel: "mistral-large-latest" },
-    copilot: { key: env.COPILOT_API_KEY, defaultModel: "copilot-1" },
-    deepseek: { key: env.DEEPSEEK_API_KEY, defaultModel: "deepseek-chat" },
-  };
+  const claudeKeys = loadClaudeConfigKeys();
+  const mergedEnv: Record<string, string | undefined> = { ...claudeKeys, ...env };
+
+  const projectRoot = process.cwd();
+  let projectName = path.basename(projectRoot);
+
+  try {
+    const pkgPath = path.join(projectRoot, "package.json");
+    if (existsSync(pkgPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      if (pkg.name) projectName = pkg.name;
+    }
+  } catch {
+    // Ignore
+  }
+
+  const providers = {} as Record<ModelProvider, { key?: string; defaultModel: string }>;
+  for (const [p, data] of Object.entries(PROVIDERS_DATA.defaults)) {
+    const provider = p as ModelProvider;
+    const envKeyName = CLAUDE_CONFIG_MAP[provider];
+    providers[provider] = {
+      key: mergedEnv[envKeyName],
+      defaultModel: (data as any).defaultModel,
+    };
+  }
 
   const selectedProvider = (env.LULU_PROVIDER as ModelProvider) ?? "claude";
   const config = providers[selectedProvider];
+
+  let systemPrompt = env.LULU_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
+  
+  // Inject Project Memory
+  const memoryPath = path.join(homedir(), ".lulu", "projects", projectName, "memory.json");
+  if (existsSync(memoryPath)) {
+    try {
+      const memoryRaw = readFileSync(memoryPath, "utf-8");
+      if (memoryRaw.trim()) {
+        const memory = JSON.parse(memoryRaw);
+        systemPrompt += `\n\n# Project Memory (${projectName}):\n${JSON.stringify(memory, null, 2)}`;
+      }
+    } catch {
+      // Ignore
+    }
+  }
 
   if (!config || !config.key) {
     // If selected provider is not available, try to find the first one that has a key
@@ -37,15 +85,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     );
     if (!firstAvailable) {
       throw new Error(
-        "No API keys found. Please set ANTHROPIC_API_KEY or another provider key in your .env file.",
+        "No API keys found. Please set ANTHROPIC_API_KEY or another provider key in your environment, or configure ~/.lulu/config.json.",
       );
     }
     return {
       provider: firstAvailable,
       model: env.LULU_MODEL ?? providers[firstAvailable].defaultModel,
       apiKey: providers[firstAvailable].key!,
-      systemPrompt: env.LULU_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT,
+      systemPrompt,
       maxTokens: parsePositiveInt(env.LULU_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+      projectName,
+      projectRoot,
     };
   }
 
@@ -53,8 +103,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     provider: selectedProvider,
     model: env.LULU_MODEL ?? config.defaultModel,
     apiKey: config.key,
-    systemPrompt: env.LULU_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT,
+    systemPrompt,
     maxTokens: parsePositiveInt(env.LULU_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+    projectName,
+    projectRoot,
   };
 }
 

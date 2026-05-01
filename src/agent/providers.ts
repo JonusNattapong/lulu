@@ -22,6 +22,37 @@ export interface AgentResponse {
   stopReason: string;
 }
 
+export interface StreamEvent {
+  type: "text_delta" | "text_end" | "tool_use";
+  text?: string;
+  toolCalls?: ToolCall[];
+  stopReason?: string;
+}
+
+export async function* sendToProviderStream(
+  config: AgentConfig,
+  messages: Anthropic.MessageParam[],
+  tools: ToolDef[],
+): AsyncGenerator<StreamEvent> {
+  switch (config.provider) {
+    case "claude":
+      yield* streamClaude(config, messages, tools);
+      return;
+    case "openrouter":
+    case "deepseek":
+    case "mistral":
+    case "openai":
+    case "kilocode":
+    case "opencode":
+    case "cline":
+    case "copilot":
+      yield* streamOpenAICompatible(config, messages, tools);
+      return;
+    default:
+      throw new Error(`Provider ${config.provider} is not supported yet.`);
+  }
+}
+
 export async function sendToProvider(
   config: AgentConfig,
   messages: Anthropic.MessageParam[],
@@ -41,6 +72,55 @@ export async function sendToProvider(
       return sendToOpenAICompatible(config, messages, tools);
     default:
       throw new Error(`Provider ${config.provider} is not supported yet.`);
+  }
+}
+
+async function* streamClaude(
+  config: AgentConfig,
+  messages: Anthropic.MessageParam[],
+  tools: ToolDef[],
+): AsyncGenerator<StreamEvent> {
+  const client = new Anthropic({ apiKey: config.apiKey });
+  let fullText = "";
+
+  const stream = client.messages
+    .stream({
+      model: config.model,
+      max_tokens: config.maxTokens,
+      system: config.systemPrompt,
+      messages,
+      tools: toolsToAnthropic(tools),
+    })
+    .on("text", (text) => {
+      fullText += text;
+      process.stdout.write(text);
+    });
+
+  const final = await stream.finalMessage();
+
+  const toolCalls: ToolCall[] = [];
+  let finalText = "";
+
+  for (const block of final.content) {
+    switch (block.type) {
+      case "text":
+        finalText += (finalText ? "\n" : "") + block.text;
+        break;
+      case "tool_use":
+        toolCalls.push({
+          id: block.id,
+          name: block.name,
+          input: block.input as Record<string, unknown>,
+        });
+        break;
+    }
+  }
+
+  const text = finalText || fullText;
+  yield { type: "text_end", text };
+
+  if (toolCalls.length > 0) {
+    yield { type: "tool_use", toolCalls, stopReason: final.stop_reason ?? "end_turn" };
   }
 }
 
@@ -143,6 +223,127 @@ async function sendToOpenAICompatible(
     toolCalls,
     stopReason: choice.finish_reason
   };
+}
+
+async function* streamOpenAICompatible(
+  config: AgentConfig,
+  messages: Anthropic.MessageParam[],
+  tools: ToolDef[],
+): AsyncGenerator<StreamEvent> {
+  const baseUrl = getBaseUrl(config.provider);
+
+  const openAIMessages = messages.map(m => ({
+    role: m.role,
+    content: Array.isArray(m.content)
+      ? m.content.map(c => c.type === 'text' ? c.text : JSON.stringify(c)).join('\n')
+      : m.content
+  }));
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: [
+        { role: 'system', content: config.systemPrompt },
+        ...openAIMessages
+      ],
+      tools: tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.input_schema
+        }
+      })),
+      max_tokens: config.maxTokens,
+      stream: true,
+      stream_options: { include_usage: false },
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI-compatible provider error (${response.status}): ${error}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No response body for streaming");
+
+  const decoder = new TextDecoder();
+  let fullText = "";
+  const toolCallAccum: Map<number, { id: string; name: string; args: string }> = new Map();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data: ")) continue;
+      const jsonStr = trimmed.slice(6);
+      if (jsonStr === "[DONE]") continue;
+
+      try {
+        const chunk = JSON.parse(jsonStr);
+        const delta = chunk.choices?.[0]?.delta;
+        if (!delta) continue;
+
+        if (delta.content) {
+          fullText += delta.content;
+          process.stdout.write(delta.content);
+        }
+
+        // Accumulate tool calls
+        const tcDeltas = delta.tool_calls;
+        if (tcDeltas) {
+          for (const tc of tcDeltas) {
+            const idx = tc.index ?? 0;
+            if (!toolCallAccum.has(idx)) {
+              toolCallAccum.set(idx, {
+                id: tc.id ?? "",
+                name: tc.function?.name ?? "",
+                args: "",
+              });
+            }
+            const entry = toolCallAccum.get(idx)!;
+            if (tc.id) entry.id = tc.id;
+            if (tc.function?.name) entry.name = tc.function.name;
+            if (tc.function?.arguments) entry.args += tc.function.arguments;
+          }
+        }
+      } catch {
+        // Skip malformed chunks
+      }
+    }
+  }
+
+  yield { type: "text_end", text: fullText };
+
+  const toolCalls: ToolCall[] = [];
+  for (const [, acc] of toolCallAccum) {
+    try {
+      toolCalls.push({
+        id: acc.id,
+        name: acc.name,
+        input: JSON.parse(acc.args),
+      });
+    } catch {
+      // Skip unparseable tool calls
+    }
+  }
+
+  if (toolCalls.length > 0) {
+    yield { type: "tool_use", toolCalls, stopReason: "tool_calls" };
+  }
 }
 
 function getBaseUrl(provider: ModelProvider): string {
