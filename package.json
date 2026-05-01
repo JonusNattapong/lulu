@@ -6,7 +6,8 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "lulu": "dist/index.js"
+    "lulu": "dist/index.js",
+    "lulu-telegram": "dist/integrations/telegram.js"
   },
   "files": [
     "dist",
@@ -20,6 +21,7 @@
     "start": "bun dist/cli/index.js",
     "lulu": "bun src/cli/index.tsx",
     "server": "bun src/api/server.ts",
+    "telegram": "bun src/integrations/telegram.ts",
     "test": "bun test",
     "test:watch": "bun test --watch"
   },
@@ -48,6 +50,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "^1.3.13",
     "@types/marked": "^6.0.0",
     "@types/node": "^22.0.0",
     "ts-node": "^10.9.2",

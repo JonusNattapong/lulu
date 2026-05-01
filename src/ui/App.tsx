@@ -17,14 +17,44 @@ interface AppProps {
   currentResponse: string;
   isThinking: boolean;
   totalUsage: Usage;
+  config?: { provider?: string; model?: string };
 }
 
-export const App: React.FC<AppProps> = ({ onSendMessage, messages, currentResponse, isThinking, totalUsage }) => {
+export const App: React.FC<AppProps> = ({ onSendMessage, messages, currentResponse, isThinking, totalUsage, config }) => {
   const [query, setQuery] = useState('');
+  const [historyPos, setHistoryPos] = useState(-1);
   const { exit } = useApp();
+
+  // Build linear history of user messages (oldest first, excludes /edit itself)
+  const userHistory = messages
+    .filter(m => m.role === 'user' && !m.content.startsWith('/edit'))
+    .map(m => m.content);
 
   useInput((input, key) => {
     if (key.escape) exit();
+
+    if (key.upArrow) {
+      if (userHistory.length === 0) return;
+      const newPos = historyPos === -1
+        ? userHistory.length - 1
+        : Math.max(0, historyPos - 1);
+      setHistoryPos(newPos);
+      setQuery(userHistory[newPos]);
+      return;
+    }
+
+    if (key.downArrow) {
+      if (historyPos === -1) return;
+      const newPos = historyPos + 1;
+      if (newPos >= userHistory.length) {
+        setHistoryPos(-1);
+        setQuery('');
+      } else {
+        setHistoryPos(newPos);
+        setQuery(userHistory[newPos]);
+      }
+      return;
+    }
   });
 
   // use Markdown component instead of formatOutput
@@ -93,24 +123,34 @@ export const App: React.FC<AppProps> = ({ onSendMessage, messages, currentRespon
 
       <Box>
         <Text color="blue" bold>{'> '}</Text>
-        <TextInput 
-          value={query} 
-          onChange={setQuery} 
+        <TextInput
+          value={query}
+          onChange={setQuery}
           onSubmit={handleSubmit}
           placeholder="Type your message or /help..."
         />
       </Box>
-      
-      <Box marginTop={1} justifyContent="space-between">
-        <Box>
-          <Text dimColor>Press ESC to exit</Text>
+
+      {/* Status bar */}
+      {config && (
+        <Box marginTop={1} justifyContent="space-between">
+          <Box>
+            <Text dimColor>
+              {config.provider || 'local'} / {config.model || 'default'}
+            </Text>
+          </Box>
+          <Box>
+            <Text dimColor>
+              {isThinking ? pc.yellow('● thinking') : pc.green('● ready')} · '↑/↓' nav · '/edit' multiline · 'ESC' quit
+            </Text>
+          </Box>
+          <Box>
+            <Text color="gray">
+              {totalUsage.totalTokens} tkn · ${(totalUsage.costEstimate || 0).toFixed(4)}
+            </Text>
+          </Box>
         </Box>
-        <Box>
-          <Text color="gray">
-            Tokens: {totalUsage.totalTokens} | Est. Cost: ${totalUsage.costEstimate.toFixed(4)}
-          </Text>
-        </Box>
-      </Box>
+      )}
     </Box>
   );
 };
