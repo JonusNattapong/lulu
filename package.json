@@ -29,6 +29,9 @@
     "server": "bun src/api/server.ts",
     "telegram": "bun src/integrations/telegram.ts",
     "telegram:setup": "bun src/integrations/telegram.ts setup",
+    "onboard": "bun src/core/onboarding.ts",
+    "heartbeat": "bun src/core/heartbeat.ts",
+    "heartbeat:once": "bun src/core/heartbeat.ts --once",
     "test": "bun test",
     "test:watch": "bun test --watch"
   },

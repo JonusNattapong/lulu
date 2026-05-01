@@ -14,6 +14,11 @@ All notable changes to the Lulu project will be documented in this file.
 - **Message History Navigation:** Reverse chronological message history with keyboard navigation in the terminal UI.
 - **Status Bar:** Real-time status bar showing model, provider, and session info in the terminal UI.
 - **Telegram Pairing Wizard:** Added `telegram:setup` to validate a bot token, approve a Telegram chat from the host terminal, and persist approved bindings in `~/.lulu/telegram.json`.
+- **Gateway Runtime:** Added a central gateway for API, dashboard, and Telegram routing, including per-route queues, session resolution, command handling, agent execution, and message persistence.
+- **Identity and Binding System:** Added central users, roles, channel bindings, project bindings, and agent bindings in `~/.lulu/identity.json`, with Telegram setup writing identity bindings during pairing.
+- **SOUL File System:** Added Obsidian-compatible `.lulu/*.md` behavior files and `/soul init`.
+- **Skill Retrieval:** Prompt construction now selects relevant learned skills instead of injecting the entire skill store.
+- **Heartbeat Runner:** Added `heartbeat` and `heartbeat:once` scripts for recurring scheduler jobs.
 
 ### Changed
 - Improved README with a more professional technical overview.
