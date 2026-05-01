@@ -2,6 +2,14 @@
 
 All notable changes to the Lulu project will be documented in this file.
 
+## [0.0.5] - 2026-05-01
+
+### Added
+- **The Alchemist (Plugin System):** Users can now extend Lulu's capabilities by dropping JavaScript files into `~/.lulu/plugins/`. Tools are loaded dynamically at startup.
+- **Improved Tool Discovery:** Dynamic merging of Built-in, Plugin, and MCP tools.
+- **Autonomous Browser Research:** Added `browser_search` and `browser_read` tools using Playwright.
+- **HTML to Markdown:** Integrated `turndown` for clean web content.
+
 ## [0.0.4] - 2026-05-01
 
 ### Added

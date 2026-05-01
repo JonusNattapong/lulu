@@ -29,25 +29,51 @@ function loadClaudeConfigKeys(): Record<string, string> {
 }
 
 function loadMCPServers(): MCPServer[] {
-  const globalPath = path.join(homedir(), ".lulu", "mcp-servers.json");
-  const localPath = path.join(process.cwd(), ".lulu-mcp.json");
+  const paths = [
+    path.join(process.cwd(), ".lulu-mcp.json"),
+    path.join(process.cwd(), "mcp-servers.json"),
+    path.join(homedir(), ".lulu", "mcp-servers.json"),
+  ];
+
+  // Add Claude Desktop config path
+  if (process.platform === "win32") {
+    paths.push(path.join(process.env.APPDATA || "", "Claude", "claude_desktop_config.json"));
+  } else {
+    paths.push(path.join(homedir(), "Library", "Application Support", "Claude", "claude_desktop_config.json"));
+  }
   
-  const servers: MCPServer[] = [];
+  const serverMap: Map<string, MCPServer> = new Map();
   
-  for (const p of [globalPath, localPath]) {
+  for (const p of paths) {
     if (existsSync(p)) {
       try {
         const raw = readFileSync(p, "utf-8");
         const parsed = JSON.parse(raw);
-        const arr = Array.isArray(parsed) ? parsed : parsed?.servers ?? [];
-        servers.push(...arr);
-      } catch {
-        // Ignore
-      }
+        let serversArr: any[] = [];
+        
+        if (Array.isArray(parsed)) {
+          serversArr = parsed;
+        } else if (parsed.mcpServers) { // Claude style
+          serversArr = Object.entries(parsed.mcpServers).map(([name, conf]: [string, any]) => ({
+            name,
+            command: conf.command,
+            args: conf.args,
+            env: conf.env,
+          }));
+        } else if (parsed.servers) { // Lulu style
+          serversArr = parsed.servers;
+        }
+
+        for (const s of serversArr) {
+          if (s.name && !serverMap.has(s.name)) {
+            serverMap.set(s.name, s);
+          }
+        }
+      } catch { /* Ignore */ }
     }
   }
   
-  return servers;
+  return Array.from(serverMap.values());
 }
 
 const DEFAULT_MODEL = "claude-3-5-sonnet-20241022";

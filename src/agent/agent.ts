@@ -8,7 +8,7 @@ import {
   toolCallToClaudeMessage,
   type Usage,
 } from "./providers.js";
-import { BUILTIN_TOOLS, executeTool } from "./tools.js";
+import { BUILTIN_TOOLS, executeTool, loadPlugins, getPluginTools } from "./tools.js";
 import { loadMCPServers, getMCPTools, callMCPTool, closeAllMCP } from "./mcp.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -72,15 +72,23 @@ export async function runAgent(
   context: MessageParam[] = [],
   onText?: (text: string) => void,
 ): Promise<{ messages: MessageParam[]; finalText: string; usage: Usage }> {
-  // Load MCP servers if configured
-  let allTools = BUILTIN_TOOLS;
+  // Load tools
+  await loadPlugins();
+  const pluginTools = getPluginTools();
+  let allTools = [...BUILTIN_TOOLS, ...pluginTools];
+
   if (config.mcpServers && config.mcpServers.length > 0) {
     await loadMCPServers(config.mcpServers);
     const mcpTools = getMCPTools();
-    if (mcpTools.length > 0) {
-      allTools = [...BUILTIN_TOOLS, ...mcpTools];
-      if (onText) onText(pc.dim(`[MCP] Loaded ${mcpTools.length} tools from ${config.mcpServers.length} server(s)\n`));
+    allTools = [...allTools, ...mcpTools];
+    
+    if (onText && mcpTools.length > 0) {
+      onText(pc.dim(`[MCP] Loaded ${mcpTools.length} tools\n`));
     }
+  }
+
+  if (onText && pluginTools.length > 0) {
+    onText(pc.dim(`[Plugin] Loaded ${pluginTools.length} custom tools\n`));
   }
 
   let activeContext = [...context];

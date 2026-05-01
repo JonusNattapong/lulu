@@ -60,7 +60,7 @@ export const App: React.FC<AppProps> = ({ onSendMessage, messages, currentRespon
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1} flexDirection="column">
         <Text color="cyan" bold>{logo}</Text>
-        <Text color="cyan" dimColor> v0.0.4 | Autonomous AI Assistant</Text>
+        <Text color="cyan" dimColor> v0.0.5 | Autonomous AI Assistant</Text>
       </Box>
 
       <Box flexDirection="column" marginBottom={1}>

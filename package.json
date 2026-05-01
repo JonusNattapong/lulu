@@ -1,6 +1,6 @@
 {
   "name": "luluai",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "license": "MIT",
   "description": "A small personal AI assistant for working with local files.",
   "type": "module",

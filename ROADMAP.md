@@ -15,16 +15,16 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 - [x] **Semantic Search:** LLM-powered relevance scoring for file discovery.
 - [x] **Auto-Memory:** Agent autonomously updates memory after tasks.
 
-## Phase 3: Enhanced UX & Interface
+## Phase 3: Enhanced UX & Interface (Completed)
 - [x] **Rich Terminal UI (v2):** Rebuilt CLI using React and Ink with ASCII Art.
 - [x] **Token & Cost Tracking:** Real-time usage and cost display.
-- [ ] **Progress Indicators:** Detailed visual feedback for tool execution.
-- [ ] **Browser Integration:** Lightweight browser tool for web research.
+- [x] **Incremental Streaming:** Real-time text delta streaming in the UI.
 
-## Phase 4: Ecosystem & Integration
-- [ ] **MCP Support:** Integrate with Model Context Protocol servers.
-- [ ] **Plugin System:** Allow users to add custom tools via external JSON/JS files.
+## Phase 4: Ecosystem & Integration (In Progress)
+- [x] **The Alchemist (Plugin System):** Dynamic tool loading from local files.
+- [x] **Autonomous Browser Research:** Web searching and reading capabilities.
 - [x] **Elysia Server:** High-performance API layer built with Bun.
+- [ ] **MCP Support (Dynamic):** Fully automated MCP server discovery and lifecycle.
 - [ ] **Web Dashboard:** A local web UI to complement the CLI experience.
 
 ## Future Vision

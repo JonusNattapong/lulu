@@ -1,25 +1,82 @@
-# CLAUDE.md — Lulu System Instructions
+# CLAUDE.md
 
-## Project Context
-**Lulu** is an autonomous AI coding assistant CLI. It operates in an agentic loop, using tools to inspect, reason, and modify local codebases.
+This file provides guidance to Claude Code (claude.ai/code) when working with the lulu repository.
 
-## Critical Constraints
-1. **Plan Mode First:** For any multi-step task or refactor, you MUST present a plan for review before executing any file modifications.
-2. **Strict Verification:** After writing files, you must run `npm run typecheck` (if applicable) or verify the changes using `read_file` to ensure correctness.
-3. **No Placeholders:** Never use `// ...` or placeholders. Implement the full logic or explain why it's deferred.
-4. **Documentation Maintenance:** You MUST update `ARCHITECTURE.md`, `ROADMAP.md`, `DECISIONS.md`, and `CHANGELOG.md` whenever changes are made. Do not leave documentation stale.
-5. **Tool Safety:** Respect `LULU_ALLOW_WRITE` and `LULU_ALLOW_COMMAND`. Ask for explicit permission for high-risk commands.
+## Commands
 
-## Architecture Guidelines
-- **Core Loop:** Managed in `src/agent/agent.ts`. Keep logic decoupled from providers.
-- **Provider System:** Use `src/agent/providers.ts`. All data is JSON-ified via `src/providers.json`.
-- **Tools:** Defined in `src/agent/tools_schema.json`. Implementations are in `src/agent/tools.ts`.
-- **Memory:** Shared project context is stored in `~/.lulu/projects/`.
+```bash
+bun install        # install dependencies
+bun tsc            # TypeScript compile
+bun run lulu       # start interactive REPL
+bun run lulu -- "prompt"   # one-shot execution
+bun run server     # Elysia HTTP API server
+bun test           # run unit tests
+```
 
-## Coding Standards
-- **TypeScript:** Strict types, no `any`. Use `interface` over `type` for public APIs.
-- **ESM:** Always use `.js` extensions for local imports.
-- **Style:** Functional approach, immutability, and robust error handling for every tool.
+## Git Workflow
 
-## Pointer to Advanced Rules
-Detailed rules for security, development, and changelogs are located in `.claude/rules/`.
+```bash
+git push origin main
+git tag -a v0.0.5 -m "msg" && git push origin v0.0.5
+gh release create v0.0.5 --title "v0.0.5" --notes "notes" --repo JonusNattapong/lulu
+```
+
+## High-Level Architecture
+
+Lulu is an agentic AI assistant built on a tool-calling loop:
+
+```
+User → src/index.ts (REPL) → src/agent/agent.ts
+                      ↓
+         ┌────────────┴────────────┐
+         ↓                         ↓
+   src/agent/providers.ts    src/agent/tools.ts
+         ↓                         ↓
+   src/providers.json     src/agent/tools_schema.json
+```
+
+- **Agent loop**: `src/agent/agent.ts` — 10 tool rounds max, auto-summarizes at 12 messages
+- **Providers**: `src/agent/providers.ts` — Claude (SDK) + OpenAI-compatible passthrough
+- **Tools**: Defined in `src/agent/tools_schema.json`, implemented in `src/agent/tools.ts` (switch statement)
+- **Config**: `src/config.ts` — loads `~/.lulu/config.json`, injects project memory + global skills into system prompt
+- **HTTP API**: `src/server.ts` — Elysia server (`POST /prompt`, `GET /history`)
+- **Storage**: `~/.lulu/` — `config.json`, `projects/[name]/memory.json`, `skills.json`, `plugins/`, `history`
+
+## Tool & Provider Extension
+
+- **New tool**: Add JSON schema to `tools_schema.json`, implement `case` in `executeToolImpl()`, export helpers for tests, write tests in `src/__tests__/`, update `CHANGELOG.md`.
+- **New provider**: Extend `ModelProvider` type in `src/types.ts`, add to `providers.json` (default model), add `getBaseUrl()` + streaming `case` in `providers.ts`, add env key mapping.
+
+## Testing
+
+```bash
+bun test                              # all tests
+bun test --watch                      # watch mode
+bun test src/__tests__/providers.test.ts   # single file
+```
+
+Test files: `src/__tests__/*.test.ts`. Export non-internal helpers for testability.
+
+## Important Working Files
+
+| File | Purpose |
+|---|---|
+| `src/agent/agent.ts` | Core agentic loop |
+| `src/agent/providers.ts` | Provider routing + streaming |
+| `src/agent/tools.ts` | Tool implementations |
+| `src/agent/tools_schema.json` | JSON tool definitions |
+| `src/agent/mcp.ts` | MCP protocol bridge |
+| `src/types.ts` | Shared TypeScript types |
+| `src/providers.json` | Provider defaults + system prompt |
+| `src/config.ts` | Config + memory injection |
+| `src/index.ts` | CLI REPL entry |
+
+## Workspace Config
+
+Project-specific rules are in `.claude/`:
+- `.claude/instructions.md` — runtime constraints (TypeScript strict, ESM, tool safety)
+- `.claude/rules/` — workflow, security, dev docs, changelog conventions
+- `.claude/commands/` — skill wrappers for common tasks (changelog, commit)
+- `.claude/skills/` — reusable skill definitions (add-tool, add-provider, lulu-coding, mcp)
+
+Read `.claude/rules/` for detailed guidance before making changes.

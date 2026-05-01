@@ -1,89 +1,102 @@
-# Lulu
+# 🌸 Lulu AI (v0.0.4)
 
-Lulu is an autonomous, AI-first coding assistant designed for local development. It understands your codebase, remembers decisions through persistent memory, and executes complex workflows across multiple AI providers.
+Lulu is an **Autonomous AI Coding Assistant** designed for local development. It doesn't just suggest code; it understands your architecture, remembers your decisions, researches the web, and executes complex workflows with precision.
 
----
-
-## Key Features
-
-- **Autonomous Agent Loop:** Performs multi-round reasoning to solve complex development tasks.
-- **Project Memory:** Persistent structured knowledge about your codebase stored in `~/.lulu/projects/`.
-- **Multi-Provider Support:** Seamless integration with Anthropic, OpenAI, Google Gemini, DeepSeek, and others.
-- **Global Storage:** Centralized configuration and history in `~/.lulu/` (home directory).
-- **Agent-Optimized:** Built-in `.claude` instructions and modular rules for optimized AI performance.
-- **JSON-First Configuration:** Internal schemas and settings use JSON for simplified extensibility.
-
----
-
-## Quick Start
-
-### Prerequisites
-- Node.js 22 or newer
-- npm or pnpm
-
-### Installation
-```sh
-npm install
-npm run build
+```text
+  _      _    _   _      _    _ 
+ | |    | |  | | | |    | |  | |
+ | |    | |  | | | |    | |  | |
+ | |____| |__| | | |____| |__| |
+ |______|______| |______|______|
+       v0.0.4 | Autonomous AI Assistant
 ```
 
-### API Configuration
-Configure your keys via environment variables or the global config file at `~/.lulu/config.json`:
+---
+
+## ✨ Key Features
+
+- **🌐 Autonomous Browser Research:** Lulu can search the web and read documentation in real-time using Playwright (Chromium), converting messy HTML into clean Markdown for reasoning.
+- **🎨 Modern Ink UI:** A beautiful, React-based terminal interface with real-time streaming, interactive spinners, and syntax-highlighted output.
+- **🧠 Project Memory & Reflection:** Automatically reflects on tasks and updates persistent knowledge about your codebase in `~/.lulu/projects/`.
+- **🔍 Semantic Search:** LLM-powered relevance scoring to find the right code patterns even when keywords don't match.
+- **💰 Token & Cost Tracking:** Transparent, real-time monitoring of token consumption and estimated USD costs for every interaction.
+- **🛠️ MCP Integration:** Connects to the **Model Context Protocol** ecosystem to bring external tools (Databases, Slack, Drive) directly into your terminal.
+- **⚡ Bun-Powered Performance:** Built with Bun for ultra-fast startup times and high-performance execution.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+- [Bun](https://bun.sh/) (Recommended) or Node.js 22+
+
+### 2. Installation
+```sh
+git clone https://github.com/JonusNattapong/lulu.git
+cd lulu
+bun install
+bun run build
+```
+
+### 3. API Configuration
+Create a config file at `~/.lulu/config.json`:
 ```json
 {
   "apiKeys": {
-    "anthropic": "your-key-here",
-    "openai": "your-key-here"
+    "anthropic": "your-anthropic-key",
+    "openai": "your-openai-key"
   }
 }
 ```
 
 ---
 
-## Usage
+## 🛠️ Usage
 
-### Interactive REPL
+### Interactive REPL (Recommended)
+Launch the beautiful Ink-based interface:
 ```sh
-npm run lulu
+bun run lulu
 ```
-- `/curate`: Optimize your global skill library.
+
+### One-Shot Execution
+```sh
+bun run lulu -- "Explain the authentication flow in this project"
+```
+
+### Core Commands (REPL)
 - `/help`: Show available commands and environment variables.
-- `/exit` or `/quit`: End the session.
-
-### Single Prompt Execution
-```sh
-npm run lulu -- "Explain the architecture of this project"
-```
+- `/exit`: End the session.
+- **Esc**: Quick exit.
 
 ---
 
-## Configuration
-
-Lulu is customizable via environment variables and `~/.lulu/config.json`:
+## ⚙️ Configuration
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `LULU_PROVIDER` | AI Service Provider | `claude` |
+| `LULU_PROVIDER` | AI Provider (claude, openai, deepseek, etc.) | `claude` |
 | `LULU_MODEL` | Specific Model ID | Provider Default |
-| `LULU_ALLOW_WRITE` | Enable `write_file` tool | `false` |
-| `LULU_ALLOW_COMMAND`| Enable `run_command` tool | `false` |
+| `LULU_ALLOW_WRITE` | Enable file writing (Security) | `false` |
+| `LULU_ALLOW_COMMAND`| Enable terminal commands (Security) | `false` |
 
 ---
 
-## Project Documentation
-
-Detailed guides for contributors and system understanding:
-- [ARCHITECTURE.md](./ARCHITECTURE.md): System design and data flow.
-- [CONTRIBUTING.md](./CONTRIBUTING.md): Guidelines for adding tools and providers.
-- [ROADMAP.md](./ROADMAP.md): Future goals and development phases.
-- [DECISIONS.md](./DECISIONS.md): Record of architectural decisions.
-
----
-
-## Safety
-By default, Lulu operates in Read-Only mode. To enable file modifications or command execution, set `LULU_ALLOW_WRITE=true` and `LULU_ALLOW_COMMAND=true` in your environment.
+## 🛡️ Safety & Security
+By default, Lulu operates in **Read-Only** mode. To grant Lulu the power to modify files or run commands, explicitly set:
+```sh
+export LULU_ALLOW_WRITE=true
+export LULU_ALLOW_COMMAND=true
+```
 
 ---
 
-## License
+## 📖 Project Structure
+- [ARCHITECTURE.md](./ARCHITECTURE.md): System design.
+- [ROADMAP.md](./ROADMAP.md): Future vision.
+- [CHANGELOG.md](./CHANGELOG.md): Version history.
+
+---
+
+## 📄 License
 MIT

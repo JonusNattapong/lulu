@@ -18,8 +18,51 @@ export const BUILTIN_TOOLS: ToolDef[] = JSON.parse(
   readFileSync(new URL("./tools_schema.json", import.meta.url), "utf-8"),
 );
 
+export interface Plugin {
+  name: string;
+  description: string;
+  input_schema: any;
+  execute: (input: any, config: AgentConfig) => Promise<string>;
+}
+
+const PLUGINS: Map<string, Plugin> = new Map();
+
+export async function loadPlugins(): Promise<void> {
+  const pluginDir = path.join(homedir(), ".lulu", "plugins");
+  if (!existsSync(pluginDir)) return;
+
+  const files = readdirSync(pluginDir).filter(f => f.endsWith('.js') || f.endsWith('.ts'));
+  for (const file of files) {
+    try {
+      const pluginPath = path.join(pluginDir, file);
+      // Use dynamic import with file:// for Windows compatibility
+      const plugin = (await import(`file://${pluginPath}`)).default as Plugin;
+      if (plugin && plugin.name && plugin.execute) {
+        PLUGINS.set(plugin.name, plugin);
+      }
+    } catch (err) {
+      console.error(`[Plugin] Failed to load ${file}:`, err);
+    }
+  }
+}
+
+export function getPluginTools(): ToolDef[] {
+  return Array.from(PLUGINS.values()).map(p => ({
+    name: p.name,
+    description: `[Plugin] ${p.description}`,
+    input_schema: p.input_schema
+  }));
+}
+
 export async function executeTool(call: ToolCall, config: AgentConfig): Promise<ToolResult> {
   try {
+    // Check plugins first
+    const plugin = PLUGINS.get(call.name);
+    if (plugin) {
+      const result = await plugin.execute(call.input, config);
+      return { tool_use_id: call.id, content: result };
+    }
+
     const result = await executeToolImpl(call, config);
     return { tool_use_id: call.id, content: result };
   } catch (err: unknown) {
