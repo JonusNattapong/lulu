@@ -1,6 +1,6 @@
 # Project Architecture: Lulu
 
-Lulu is a local-first autonomous agent for development, repository work, and chat-based control surfaces such as CLI, API, dashboard, desktop, and Telegram.
+Lulu is a personal AI agent that learns your preferences, maintains context across sessions, and acts proactively. It runs as a persistent daemon across CLI, API, dashboard, desktop, and Telegram.
 
 ## System Overview
 
@@ -216,7 +216,9 @@ Lulu stores durable user state outside the repository:
 - `trajectories/`: exported session trajectories
 - `alwayson.json`: always-on service configuration
 
-## Lessons From OpenClaw And Hermes Agent
+## Design Principles
+
+The useful pattern is not copying another agent's surface area. It is turning repeated behavior into durable subsystems.
 
 The useful pattern is not copying another agent's surface area. It is turning repeated behavior into durable subsystems.
 

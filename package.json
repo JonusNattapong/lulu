@@ -2,7 +2,7 @@
   "name": "luluai",
   "version": "0.0.8",
   "license": "MIT",
-  "description": "A small personal AI assistant for working with local files.",
+  "description": "A personal AI agent — persistent, always-on, and proactively helpful.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

@@ -1,8 +1,8 @@
 # Lulu AI
 
-Lulu is a local-first AI coding assistant for repository work, automation, and developer operations. It provides a shared agent runtime across the CLI, local API, web dashboard, desktop app, and Telegram.
+Lulu is a personal AI agent that learns your preferences, maintains context across sessions, and acts proactively on your behalf. It runs as a persistent daemon — always-on, always learning. Lulu provides a shared agent runtime across CLI, local API, web dashboard, desktop app, and Telegram.
 
-Lulu is designed to work inside your projects, keep project-scoped context, use tools through a policy layer, and persist useful state in `~/.lulu`.
+Lulu is designed to learn your preferences, maintain both project-scoped and cross-session context, use tools through a policy layer, and persist useful state in `~/.lulu`. Over time, it becomes genuinely useful — not just reactive, but proactive.
 
 ```
   _      _    _   _      _    _
