@@ -4,6 +4,7 @@ import path from "node:path";
 import { TaskManager } from "./tasks.js";
 import { detectCapabilities, formatCapabilities } from "./capabilities.js";
 import { loadProjectProfile, formatProjectProfile } from "./project.js";
+import { readSoulFiles } from "./soul.js";
 
 export interface PromptLayer {
   name: string;
@@ -19,6 +20,7 @@ export interface PromptBuildResult {
 
 const PROMPT_DIR = path.join(homedir(), ".lulu", "prompts");
 const DEFAULT_PROFILE = "default";
+const DEFAULT_SKILL_LIMIT = 5;
 
 export function getPromptDir(): string {
   return PROMPT_DIR;
@@ -82,6 +84,8 @@ export function buildSystemPrompt(options: {
     });
   }
 
+  appendSoulLayers(layers, options.projectRoot);
+
   const profileData = loadProjectProfile(options.projectRoot);
   if (profileData) {
     layers.push({
@@ -97,11 +101,7 @@ export function buildSystemPrompt(options: {
     heading: `Project Memory (${options.projectName})`,
   });
 
-  appendJsonLayer(layers, {
-    name: "global-skills",
-    source: path.join(homedir(), ".lulu", "skills.json"),
-    heading: "Global Skills (Learned Patterns)",
-  });
+  appendSkillLayer(layers, env.LULU_PROMPT_QUERY || "", parseSkillLimit(env.LULU_SKILL_LIMIT));
 
   layers.push({
     name: "system-capabilities",
@@ -116,6 +116,16 @@ export function buildSystemPrompt(options: {
     layers,
     profile,
   };
+}
+
+function appendSoulLayers(layers: PromptLayer[], projectRoot: string): void {
+  for (const file of readSoulFiles(projectRoot)) {
+    layers.push({
+      name: `soul-${path.basename(file.name, ".md").toLowerCase()}`,
+      source: file.path,
+      content: file.content,
+    });
+  }
 }
 
 export function describePrompt(result: PromptBuildResult): string {
@@ -160,6 +170,54 @@ function appendJsonLayer(
   } catch {
     // Ignore invalid optional context files.
   }
+}
+
+function appendSkillLayer(layers: PromptLayer[], query: string, limit: number): void {
+  const source = path.join(homedir(), ".lulu", "skills.json");
+  if (!existsSync(source)) return;
+  try {
+    const raw = readFileSync(source, "utf-8");
+    if (!raw.trim()) return;
+    const parsed = JSON.parse(raw);
+    const skills = Object.entries(parsed).map(([name, value]) => {
+      const skill = value as any;
+      const searchable = [
+        name,
+        skill.name,
+        skill.description,
+        Array.isArray(skill.steps) ? skill.steps.join(" ") : skill.steps,
+      ].filter(Boolean).join(" ");
+      return { name, value: skill, score: scoreSkill(query, searchable) };
+    });
+
+    const selected = skills
+      .filter((skill) => !query || skill.score > 0)
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+      .slice(0, limit);
+
+    if (selected.length === 0) return;
+
+    const formatted = Object.fromEntries(selected.map((skill) => [skill.name, skill.value]));
+    layers.push({
+      name: "retrieved-skills",
+      source,
+      content: `# Retrieved Skills\n${JSON.stringify(formatted, null, 2)}`,
+    });
+  } catch {
+    // Ignore invalid optional skill files.
+  }
+}
+
+function scoreSkill(query: string, searchable: string): number {
+  if (!query.trim()) return 1;
+  const haystack = searchable.toLowerCase();
+  const words = Array.from(new Set(query.toLowerCase().split(/[^a-z0-9_./-]+/).filter((word) => word.length >= 3)));
+  return words.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
+}
+
+function parseSkillLimit(value: string | undefined): number {
+  const parsed = Number.parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SKILL_LIMIT;
 }
 
 function appendTaskLayer(layers: PromptLayer[], projectName: string): void {

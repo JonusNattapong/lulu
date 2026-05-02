@@ -1,7 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { loadConfig, loadPromptBuild } from "../core/config.js";
-import { runAgent } from "../core/agent.js";
 import { homedir } from "node:os";
 import path from "node:path";
 import { readFileSync, existsSync } from "node:fs";
@@ -13,14 +12,10 @@ import { getMCPServersLoaded } from "../core/mcp.js";
 import { getPlugins } from "../tools/tools.js";
 import { describePrompt } from "../core/prompt.js";
 import { eventBus } from "../core/events.js";
-import { SessionManager } from "../core/session.js";
-import { SecurityManager } from "../core/security.js";
-import { ConfigResolver } from "../core/config_resolver.js";
-import { commandRegistry } from "../core/commands.js";
 import { redactObject } from "../core/secrets.js";
+import { gateway } from "../core/gateway.js";
 
 const subscribers = new Set<any>();
-const sessionManager = new SessionManager();
 
 function broadcast(type: string, payload: any, sessionId?: string) {
   const redactedPayload = redactObject(payload);
@@ -105,7 +100,7 @@ const app = new Elysia()
     const content = readFileSync(logPath, "utf-8");
     return content.split("\n").filter(Boolean).map(line => JSON.parse(line));
   })
-  .get("/sessions", () => sessionManager.list().map((session) => ({
+  .get("/sessions", () => gateway.sessionManager.list().map((session) => ({
     id: session.id,
     channel: session.channel,
     title: session.title,
@@ -119,42 +114,28 @@ const app = new Elysia()
   })))
   .post("/sessions/reset", ({ body }) => {
     const { sessionId } = body as { sessionId: string };
-    return sessionManager.reset(sessionId) ?? { error: `Session not found: ${sessionId}` };
+    return gateway.sessionManager.reset(sessionId) ?? { error: `Session not found: ${sessionId}` };
   }, {
     body: t.Object({
       sessionId: t.String(),
     })
   })
   .post("/prompt", async ({ body, set }) => {
-    const config = ConfigResolver.resolve({ env: { ...process.env, LULU_CHANNEL: "api" } });
     const { prompt, context = [], sessionId } = body as { prompt: string; context: any[]; sessionId?: string };
-    
-    const session = sessionId
-      ? (sessionManager.get(sessionId) ?? sessionManager.getOrCreate({ channel: "api", subjectId: sessionId, title: "API session", config }))
-      : sessionManager.getOrCreate({ channel: "api", subjectId: "default", title: "API session", config });
-
-    // Handle Commands
-    const cmdResult = await commandRegistry.handle(prompt, { 
-      sessionId: session.id, 
-      channel: "api", 
-      config, 
-      sessionManager 
+    const result = await gateway.route({
+      channel: "api",
+      subjectId: sessionId || "default",
+      sessionId,
+      title: "API session",
+      prompt,
+      context,
+      env: { ...process.env, LULU_CHANNEL: "api" },
     });
-    if (cmdResult) {
-      return { text: cmdResult.text, messages: session.messages, sessionId: session.id };
-    }
-    
-    let fullText = "";
-    const history = context.length > 0 ? context : session.messages;
-    const result = await runAgent(config, prompt, history, (text) => {
-      fullText += text;
-    });
-    const savedSession = sessionManager.saveMessages(session.id, result.messages, config);
 
     return {
-      text: fullText,
+      text: result.text,
       messages: result.messages,
-      sessionId: savedSession.id,
+      sessionId: result.session.id,
     };
   }, {
     body: t.Object({
@@ -172,31 +153,21 @@ const app = new Elysia()
       try {
         const { type, data } = JSON.parse(raw as string);
           if (type === "prompt") {
-            const config = ConfigResolver.resolve({ env: { ...process.env, LULU_CHANNEL: "dashboard" } });
-            
-            const session = data.sessionId
-              ? (sessionManager.get(data.sessionId) ?? sessionManager.getOrCreate({ channel: "dashboard", subjectId: data.sessionId, title: "Dashboard session", config }))
-              : sessionManager.getOrCreate({ channel: "dashboard", subjectId: "default", title: "Dashboard session", config });
-
-            // Handle Commands
-            const cmdResult = await commandRegistry.handle(data.prompt, { 
-              sessionId: session.id, 
-              channel: "dashboard", 
-              config, 
-              sessionManager 
-            });
-            if (cmdResult) {
-              broadcast("text_delta", { text: cmdResult.text }, session.id);
-              broadcast("text_end", { text: cmdResult.text }, session.id);
-              return;
-            }
-
-            runAgent(config, data.prompt, data.context || session.messages)
+            gateway.route({
+              channel: "dashboard",
+              subjectId: data.sessionId || "default",
+              sessionId: data.sessionId,
+              title: "Dashboard session",
+              prompt: data.prompt,
+              context: data.context || [],
+              env: { ...process.env, LULU_CHANNEL: "dashboard" },
+              onToken: (text) => broadcast("text_delta", { text }, data.sessionId),
+            })
               .then((result) => {
-                sessionManager.saveMessages(session.id, result.messages, config);
+                broadcast("text_end", { text: result.text }, result.session.id);
               })
               .catch((err) => {
-                broadcast("error", { message: err instanceof Error ? err.message : String(err) }, session.id);
+                broadcast("error", { message: err instanceof Error ? err.message : String(err) }, data.sessionId);
               });
           }
       } catch {}

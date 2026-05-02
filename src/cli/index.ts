@@ -9,6 +9,7 @@ import { runAgent } from "../core/agent.js";
 import { describePrompt } from "../core/prompt.js";
 import { SessionManager } from "../core/session.js";
 import pc from "picocolors";
+import { runOnboarding } from "../core/onboarding.js";
 
 const HISTORY_FILE = path.join(homedir(), ".lulu", "history");
 const HISTORY_LIMIT = 100;
@@ -58,40 +59,6 @@ async function checkCuration(config: any) {
   } catch {
     // Ignore
   }
-}
-
-async function runOnboarding(): Promise<void> {
-  const rl = readline.createInterface({ input, output });
-  
-  console.log(pc.cyan(pc.bold("\n--- LULU ONBOARDING ---")));
-  console.log(pc.white("Welcome! Let's set up your Lulu environment.\n"));
-
-  console.log("To use Lulu, you need at least one AI Provider API Key.");
-  console.log("Common providers: anthropic, openai, google, deepseek.\n");
-
-  const provider = (await rl.question(pc.bold("Select provider (default: anthropic): "))).trim() || "anthropic";
-  const apiKey = (await rl.question(pc.bold(`Enter your ${provider} API key: `))).trim();
-
-  if (!apiKey) {
-    console.log(pc.red("\nError: API key is required to proceed."));
-    process.exit(1);
-  }
-
-  const configDir = path.join(homedir(), ".lulu");
-  if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-  
-  const configPath = path.join(configDir, "config.json");
-  const configData = {
-    apiKeys: {
-      [provider]: apiKey
-    }
-  };
-
-  writeFileSync(configPath, JSON.stringify(configData, null, 2), "utf-8");
-  console.log(pc.green(`\nConfig saved to ${configPath}!`));
-  console.log(pc.cyan("Onboarding complete. Restarting Lulu...\n"));
-  
-  rl.close();
 }
 
 function printHelp(): void {

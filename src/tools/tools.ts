@@ -15,6 +15,7 @@ import { promptTools } from "./modules/prompt.js";
 import { mcpTools } from "./modules/mcp.js";
 import { gitTools } from "./modules/git.js";
 import { systemTools } from "./modules/system.js";
+import { schedulerTools } from "./modules/scheduler.js";
 
 // Register all tools
 [
@@ -26,7 +27,8 @@ import { systemTools } from "./modules/system.js";
   ...promptTools,
   ...mcpTools,
   ...gitTools,
-  ...systemTools
+  ...systemTools,
+  ...schedulerTools
 ].forEach(tool => registry.register(tool));
 
 export const BUILTIN_TOOLS: ToolDef[] = registry.getToolDefs();

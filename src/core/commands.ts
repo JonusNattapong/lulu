@@ -5,6 +5,7 @@ import { loadProjectProfile } from "./project.js";
 import { capabilitiesSummary, detectCapabilities, formatCapabilities } from "./capabilities.js";
 import { describePrompt } from "./prompt.js";
 import { loadPromptBuild } from "./config.js";
+import { initSoulVault } from "./soul.js";
 
 export interface CommandContext {
   sessionId: string;
@@ -135,5 +136,19 @@ commandRegistry.register({
     }
 
     return { text: "Usage: /task list, /task show <id>" };
+  }
+});
+
+commandRegistry.register({
+  name: "soul",
+  description: "Manage Obsidian-compatible .lulu/*.md soul files",
+  execute: async (args, { config }) => {
+    const sub = args[0]?.toLowerCase();
+    if (sub === "init") {
+      const written = initSoulVault(config.projectRoot || process.cwd());
+      if (written.length === 0) return { text: "Soul vault already initialized." };
+      return { text: `Soul vault initialized:\n${written.map((file) => `- ${file}`).join("\n")}` };
+    }
+    return { text: "Usage: /soul init" };
   }
 });

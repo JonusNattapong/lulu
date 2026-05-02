@@ -20,8 +20,11 @@ Lulu is designed to work inside your projects, keep project-scoped context, use 
 - Local API and websocket streaming for dashboard integrations.
 - Desktop coworker UI built on the dashboard and Electron.
 - Telegram bridge with per-chat session context.
+- Central gateway runtime for routing channel messages into the shared agent loop.
 - Central session store shared by CLI, API, dashboard, and Telegram.
 - Layered prompt system with base, profile, project, memory, skill, and task context.
+- Obsidian-compatible SOUL file system for agent behavior, safety, ops, and heartbeat notes.
+- Skill retrieval that loads only relevant learned skills into each prompt.
 - Project memory and reflection stored under `~/.lulu/projects/`.
 - Tool registry with policy checks for filesystem, shell, tmux, web, git, task, prompt, and system tools.
 - Optional tmux tools for terminal session control.
@@ -86,6 +89,8 @@ Environment variables:
 | `LULU_MODEL` | Model id override | Provider default |
 | `LULU_PROMPT_PROFILE` | Prompt profile loaded from `~/.lulu/prompts/<profile>.md` | `default` |
 | `LULU_SESSION_MAX_MESSAGES` | Maximum messages persisted per session | `24` |
+| `LULU_SKILL_LIMIT` | Maximum retrieved skills included in the prompt | `5` |
+| `LULU_HEARTBEAT_INTERVAL_MS` | Heartbeat scheduler interval | `60000` |
 | `LULU_ALLOW_WRITE` | Enable file writes | `false` |
 | `LULU_ALLOW_COMMAND` | Enable shell commands | `false` |
 | `LULU_ALLOW_TMUX` | Enable built-in tmux tools without enabling all shell commands | `false` |
@@ -168,7 +173,19 @@ Authorization: Bearer <key>
 
 ### Telegram
 
-Create a Telegram bot with BotFather, then run:
+Create a Telegram bot with BotFather, then run the pairing wizard:
+
+```sh
+bun run telegram:setup
+```
+
+The setup command validates the bot token, waits for a Telegram message, asks you to approve the chat in the terminal, and saves the pairing to:
+
+```text
+~/.lulu/telegram.json
+```
+
+Start the Telegram bridge:
 
 ```sh
 export LULU_TELEGRAM_BOT_TOKEN=123456:your-bot-token
@@ -176,17 +193,53 @@ export LULU_TELEGRAM_ALLOWED_CHAT_IDS=123456789
 bun run telegram
 ```
 
+If `~/.lulu/telegram.json` contains approved pairings, Lulu only responds to paired chats unless the chat is also listed in `LULU_TELEGRAM_ALLOWED_CHAT_IDS`.
+
 Telegram uses the central session store at `~/.lulu/sessions.json`. Private chats respond directly. Group chats respond when the bot is mentioned or replied to.
 
 Supported commands:
 
 | Command | Description |
 | --- | --- |
+| `/help` | Show Telegram commands |
+| `/whoami` | Show chat id, chat type, user id, and username |
+| `/setup` | Show pairing and runtime status |
 | `/new` or `/reset` | Start a fresh chat context |
 | `/status` | Show provider, model, project, and context count |
 | `/prompt` | Inspect active prompt layers |
 
 ## Core Systems
+
+### Gateway System
+
+Lulu routes API, dashboard, and Telegram prompts through a central gateway runtime. The gateway is responsible for:
+
+- resolving channel-specific configuration
+- routing by channel, subject, and session
+- queueing turns per route key
+- creating and updating sessions
+- handling slash commands
+- running the agent loop
+- saving final messages back to the central session store
+
+This keeps channel integrations thin. They should translate transport-specific events into gateway requests instead of owning agent execution directly.
+
+### Identity and Binding System
+
+Lulu stores users and channel bindings in:
+
+```text
+~/.lulu/identity.json
+```
+
+The identity system supports:
+
+- central Lulu user ids
+- channel bindings such as `telegram:<chatId>`, `api:<key>`, `desktop:<user>`, and `cli:<user>`
+- roles: `admin`, `operator`, and `viewer`
+- project and agent bindings per identity
+
+Telegram setup writes both `~/.lulu/telegram.json` and the central identity store. The gateway reads identity bindings and attaches identity metadata to routed sessions.
 
 ### Session System
 
@@ -205,11 +258,68 @@ Lulu builds the system prompt from ordered layers:
 1. Built-in base prompt or `LULU_SYSTEM_PROMPT`
 2. Optional prompt profile from `~/.lulu/prompts/<profile>.md`
 3. Optional project prompt from `.lulu-prompt.md` or `.lulu/prompt.md`
-4. Project memory
-5. Skills
-6. Active tasks and runtime context
+4. Obsidian-compatible SOUL files from `.lulu/*.md`
+5. Project memory
+6. Retrieved skills relevant to the current prompt
+7. Active tasks and runtime context
 
 Inspect the prompt with `/prompt` or `GET /prompt`.
+
+### SOUL File System
+
+Lulu can use the project `.lulu/` directory as an Obsidian vault. Initialize the default files from any channel that supports slash commands:
+
+```text
+/soul init
+```
+
+This creates Markdown files such as:
+
+| File | Purpose |
+| --- | --- |
+| `.lulu/SOUL.md` | Immutable behavior rules and truth policy |
+| `.lulu/IDENTITY.md` | Agent name, role, and tone |
+| `.lulu/SHIELD.md` | Safety boundaries and destructive action rules |
+| `.lulu/OPS.md` | Model, cost, routing, and operational preferences |
+| `.lulu/HEARTBEAT.md` | Periodic runtime rhythm and checks |
+| `.lulu/CORTEX.md` | Workspace map and conventions |
+| `.lulu/MEMORY.md` | Human-reviewable stable facts |
+| `.lulu/AGENTS.md` | Multi-agent collaboration notes |
+| `.lulu/TOOLS.md` | Tool capability rules |
+
+Open the `.lulu/` folder in Obsidian to edit these files as a local vault.
+
+### Skill Retrieval
+
+Learned skills are stored in `~/.lulu/skills.json`. Lulu scores skills against the current prompt and injects only the most relevant matches into the system prompt.
+
+Control the maximum number of injected skills with:
+
+```sh
+export LULU_SKILL_LIMIT=5
+```
+
+### Heartbeat and Scheduler
+
+Lulu includes a lightweight scheduler for recurring work such as daily summaries, repo health checks, test runs, and Telegram reports.
+
+Run due jobs once:
+
+```sh
+bun run heartbeat:once
+```
+
+Run the heartbeat loop:
+
+```sh
+bun run heartbeat
+```
+
+Custom job definitions can be placed in:
+
+```text
+~/.lulu/jobs/*.json
+```
 
 ### tmux Tools
 
@@ -244,6 +354,9 @@ Common scripts:
 | `bun run lulu` | Start the CLI |
 | `bun run server` | Start the local API |
 | `bun run telegram` | Start Telegram bridge |
+| `bun run telegram:setup` | Pair a Telegram chat with Lulu |
+| `bun run heartbeat` | Run recurring scheduled jobs |
+| `bun run heartbeat:once` | Run due scheduled jobs once |
 | `bun run desktop` | Start desktop dev mode |
 | `bun run build` | Build TypeScript |
 | `bun run typecheck` | Run TypeScript without emitting files |
@@ -265,7 +378,9 @@ Lulu stores durable runtime state outside the repository:
 | Path | Purpose |
 | --- | --- |
 | `~/.lulu/config.json` | Global configuration |
+| `~/.lulu/identity.json` | Users, roles, and channel bindings |
 | `~/.lulu/sessions.json` | Shared sessions |
+| `~/.lulu/telegram.json` | Telegram token and approved chat bindings |
 | `~/.lulu/history.jsonl` | Interaction history |
 | `~/.lulu/projects/<name>/memory.json` | Project memory |
 | `~/.lulu/prompts/<profile>.md` | Prompt profiles |
