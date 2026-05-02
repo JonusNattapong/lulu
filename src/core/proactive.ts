@@ -20,6 +20,7 @@ export interface ProactiveSuggestion {
   body: string;
   context: string;
   priority: "low" | "medium" | "high";
+  tags: string[];
   dismissed: boolean;
   createdAt: string;
   shownAt?: string;
@@ -67,6 +68,7 @@ class ProactiveEngine {
     body: string;
     context: string;
     priority?: "low" | "medium" | "high";
+    tags?: string[];
   }): ProactiveSuggestion {
     // Avoid duplicates within 1 hour
     const recent = this.store.suggestions.find(s =>
@@ -83,6 +85,7 @@ class ProactiveEngine {
       body: params.body,
       context: params.context,
       priority: params.priority || "medium",
+      tags: params.tags || [],
       dismissed: false,
       createdAt: new Date().toISOString(),
     };

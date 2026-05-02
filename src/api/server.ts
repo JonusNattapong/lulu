@@ -21,6 +21,7 @@ import { notificationManager } from "../core/notifications.js";
 import { globalMemory } from "../core/global-memory.js";
 import { taskQueue } from "../core/task-queue.js";
 import { autonomousResearcher } from "../core/autonomous-research.js";
+import { listSoulFiles, getSoulFile, writeSoulFile, deleteSoulFile, hasSoulVault, readGlobalSoulFiles, initGlobalSoulVault } from "../core/soul.js";
 
 const subscribers = new Set<any>();
 
@@ -354,6 +355,49 @@ const app = new Elysia()
     return { summary: updated.result?.summary };
   })
   .post("/research/auto", () => { autonomousResearcher.enableAutoResearch(true); return { autoEnabled: true }; })
+  // SOUL
+  .get("/soul/check", ({ query }) => {
+    const projectRoot = (query as any).projectRoot || process.cwd();
+    return { hasVault: hasSoulVault(projectRoot) };
+  })
+  .get("/soul/files", ({ query }) => {
+    const projectRoot = (query as any).projectRoot || process.cwd();
+    return { files: listSoulFiles(projectRoot) };
+  })
+  .get("/soul/files/:name", ({ params, query }) => {
+    const projectRoot = (query as any).projectRoot || process.cwd();
+    const name = params.name.endsWith(".md") ? params.name : `${params.name}.md`;
+    const file = getSoulFile(projectRoot, name);
+    return file ?? { error: "Not found" };
+  })
+  .put("/soul/files/:name", ({ params, query, body }) => {
+    const projectRoot = (query as any).projectRoot || process.cwd();
+    const name = params.name.endsWith(".md") ? params.name : `${params.name}.md`;
+    const b = body as any;
+    try {
+      const file = writeSoulFile(projectRoot, name, b.content || "");
+      return { saved: true, file };
+    } catch (err: any) { return { error: err.message }; }
+  }, {
+    body: t.Object({ content: t.String() })
+  })
+  .delete("/soul/files/:name", ({ params, query }) => {
+    const projectRoot = (query as any).projectRoot || process.cwd();
+    const name = params.name.endsWith(".md") ? params.name : `${params.name}.md`;
+    try {
+      return { deleted: deleteSoulFile(projectRoot, name) };
+    } catch (err: any) { return { error: err.message }; }
+  })
+  // Global SOUL
+  .get("/soul/global", () => {
+    initGlobalSoulVault();
+    return { files: readGlobalSoulFiles() };
+  })
+  .get("/soul/global/:name", ({ params }) => {
+    const name = params.name.endsWith(".md") ? params.name : `${params.name}.md`;
+    const file = readGlobalSoulFiles().find(f => f.name === name);
+    return file ?? { error: "Not found" };
+  })
   .listen(19456);
 
 console.log(`🦊 Elysia is running at http://localhost:19456 (WebSocket: ws://localhost:19456/ws)`);

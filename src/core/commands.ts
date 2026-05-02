@@ -5,7 +5,7 @@ import { loadProjectProfile } from "./project.js";
 import { capabilitiesSummary, detectCapabilities, formatCapabilities } from "./capabilities.js";
 import { describePrompt } from "./prompt.js";
 import { loadPromptBuild } from "./config.js";
-import { initSoulVault } from "./soul.js";
+import { initSoulVault, listSoulFiles, getSoulFile, writeSoulFile, deleteSoulFile, hasSoulVault, readGlobalSoulFiles, initGlobalSoulVault } from "./soul.js";
 import "./skill-commands.js";
 import "./audit-commands.js";
 import { personalAgentDaemon } from "./daemon.js";
@@ -150,15 +150,78 @@ commandRegistry.register({
 
 commandRegistry.register({
   name: "soul",
-  description: "Manage Obsidian-compatible .lulu/*.md soul files",
+  description: "Manage SOUL files: init, list, show, edit, delete, global",
   execute: async (args, { config }) => {
+    const projectRoot = config.projectRoot || process.cwd();
     const sub = args[0]?.toLowerCase();
+
     if (sub === "init") {
-      const written = initSoulVault(config.projectRoot || process.cwd());
+      const written = initSoulVault(projectRoot);
       if (written.length === 0) return { text: "Soul vault already initialized." };
       return { text: `Soul vault initialized:\n${written.map((file) => `- ${file}`).join("\n")}` };
     }
-    return { text: "Usage: /soul init" };
+
+    if (sub === "list" || !sub) {
+      const files = listSoulFiles(projectRoot);
+      const lines = [`=== SOUL Vault (${projectRoot}/.lulu/) ===`];
+      if (files.every(f => !f.exists)) {
+        lines.push("No SOUL files found. Run /soul init to create the vault.");
+      } else {
+        for (const f of files) {
+          lines.push(`  ${f.exists ? "✓" : "○"} ${f.name} ${f.exists ? `(${f.size}b)` : ""}`);
+        }
+      }
+      const globalFiles = readGlobalSoulFiles();
+      lines.push(`\nGlobal Soul (~/.lulu/soul/): ${globalFiles.length} file(s)`);
+      return { text: lines.join("\n"), data: { project: files, global: globalFiles } };
+    }
+
+    if (sub === "show" && args[1]) {
+      const name = args[1].endsWith(".md") ? args[1] : `${args[1]}.md`;
+      const file = getSoulFile(projectRoot, name);
+      if (!file) return { text: `SOUL file not found: ${name}. Run /soul init or /soul edit ${name} <content>` };
+      return { text: `=== ${name} ===\n${file.content}`, data: file };
+    }
+
+    if (sub === "edit" && args[1]) {
+      const name = args[1].endsWith(".md") ? args[1] : `${args[1]}.md`;
+      const content = args.slice(2).join(" ");
+      try {
+        const file = writeSoulFile(projectRoot, name, content);
+        return { text: `Saved ${name} (${file.size}b)` };
+      } catch (err: any) {
+        return { text: `Error: ${err.message}` };
+      }
+    }
+
+    if (sub === "delete" && args[1]) {
+      const name = args[1].endsWith(".md") ? args[1] : `${args[1]}.md`;
+      try {
+        const deleted = deleteSoulFile(projectRoot, name);
+        return { text: deleted ? `Deleted ${name}` : `File not found: ${name}` };
+      } catch (err: any) {
+        return { text: `Error: ${err.message}` };
+      }
+    }
+
+    if (sub === "global") {
+      initGlobalSoulVault();
+      const files = readGlobalSoulFiles();
+      if (files.length === 0) return { text: "No global SOUL files. Edit ~/.lulu/soul/*.md directly." };
+      const lines = [`=== Global Soul (~/.lulu/soul/) ===`];
+      for (const f of files) {
+        lines.push(`  ${f.name} (${f.size}b): ${f.content.slice(0, 80).replace(/\n/g, " ")}...`);
+      }
+      lines.push("\nEdit global files directly at ~/.lulu/soul/");
+      return { text: lines.join("\n"), data: files };
+    }
+
+    if (sub === "check") {
+      const hasVault = hasSoulVault(projectRoot);
+      return { text: hasVault ? `SOUL vault exists at ${projectRoot}/.lulu/` : `No SOUL vault. Run /soul init to create one.` };
+    }
+
+    return { text: "Usage: /soul [init|list|show <name>|edit <name> <content>|delete <name>|global|check]" };
   }
 });
 

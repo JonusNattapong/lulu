@@ -91,6 +91,21 @@ export async function runAgent(
   // Build proactive suggestion context at session start
   const proactiveContext = proactiveEngine.buildSessionStartText();
 
+  // Check for missing SOUL vault
+  if (config.projectRoot) {
+    const { hasSoulVault } = await import("./soul.js");
+    if (!hasSoulVault(config.projectRoot)) {
+      proactiveEngine.suggest({
+        title: "SOUL vault not found",
+        body: `This project has no SOUL vault. Run /soul init to create behavior rules, identity, and workspace conventions.`,
+        context: `project: ${config.projectRoot}`,
+        type: "recommendation",
+        priority: "low",
+        tags: ["init-soul", "setup"],
+      });
+    }
+  }
+
   // Build global memory context
   const globalContext = globalMemory.buildContext();
 

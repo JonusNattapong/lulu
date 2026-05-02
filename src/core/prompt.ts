@@ -4,7 +4,7 @@ import path from "node:path";
 import { TaskManager } from "./tasks.js";
 import { detectCapabilities, formatCapabilities } from "./capabilities.js";
 import { loadProjectProfile, formatProjectProfile } from "./project.js";
-import { readSoulFiles } from "./soul.js";
+import { readSoulFiles, readGlobalSoulFiles, initGlobalSoulVault } from "./soul.js";
 
 export interface PromptLayer {
   name: string;
@@ -119,6 +119,16 @@ export function buildSystemPrompt(options: {
 }
 
 function appendSoulLayers(layers: PromptLayer[], projectRoot: string): void {
+  // Global soul first (applies to every project)
+  initGlobalSoulVault();
+  for (const file of readGlobalSoulFiles()) {
+    layers.push({
+      name: `global-soul-${path.basename(file.name, ".md").toLowerCase()}`,
+      source: file.path,
+      content: file.content,
+    });
+  }
+  // Project soul overrides global (project-specific rules take precedence)
   for (const file of readSoulFiles(projectRoot)) {
     layers.push({
       name: `soul-${path.basename(file.name, ".md").toLowerCase()}`,
