@@ -18,6 +18,7 @@ import { autonomousResearcher } from "./autonomous-research.js";
 import { selfReflection } from "./self-reflection.js";
 import { preferenceLearner } from "./preferences.js";
 import { syncPreferencesToGlobalSoul } from "./soul.js";
+import { loadAllSkills, searchSkills, validateSkill } from "./skills.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -286,6 +287,70 @@ class PersonalAgentDaemon {
 
     if (process.env.LULU_PROACTIVE_SUGGESTIONS === "true") {
       await proactiveEngine.analyze();
+    }
+
+    // Auto-curation: analyze skills every 4 hours
+    if (process.env.LULU_AUTO_CURATION === "true") {
+      await this.runCurationCheck();
+    }
+  }
+
+  private async runCurationCheck(): Promise<void> {
+    try {
+      const projectRoots = this.context.activeProjects;
+      if (projectRoots.length === 0) {
+        projectRoots.push(process.cwd());
+      }
+
+      for (const projectRoot of projectRoots) {
+        const skills = loadAllSkills(projectRoot);
+        const suggestions: string[] = [];
+
+        // Check for orphaned skills (no triggers)
+        for (const skill of skills) {
+          if (!skill.triggers || skill.triggers.length === 0) {
+            suggestions.push(`Skill "${skill.name}" has no triggers and may never be retrieved`);
+          }
+        }
+
+        // Check for very long skills
+        for (const skill of skills) {
+          if (skill.steps && skill.steps.length > 20) {
+            suggestions.push(`Skill "${skill.name}" has ${skill.steps.length} steps — consider splitting`);
+          }
+        }
+
+        // Check for similar skill names using search
+        const nameScores = new Map<string, Set<string>>();
+        for (const skill of skills) {
+          const results = searchSkills(skill.name, skills, 5);
+          for (const r of results) {
+            if (r.skill.name !== skill.name && r.score >= 0.5) {
+              if (!nameScores.has(skill.name)) nameScores.set(skill.name, new Set());
+              nameScores.get(skill.name)!.add(r.skill.name);
+            }
+          }
+        }
+        for (const [skillName, similar] of nameScores) {
+          if (similar.size > 0) {
+            suggestions.push(`Skill "${skillName}" similar to: ${Array.from(similar).join(", ")}`);
+          }
+        }
+
+        // Propose curation if issues found
+        for (const s of suggestions.slice(0, 3)) {
+          proactiveEngine.suggest({
+            title: "Skill Curation",
+            body: s,
+            context: `curation:${projectRoot}`,
+            type: "recommendation",
+            priority: "low",
+            tags: ["curation", "skill"],
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[Daemon] Curation check failed:", err);
     }
   }
 

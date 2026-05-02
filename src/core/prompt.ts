@@ -183,27 +183,49 @@ function appendJsonLayer(
 }
 
 function appendSkillLayer(layers: PromptLayer[], query: string, limit: number, projectRoot: string): void {
-  // Try new skill system first
   try {
     const { loadAllSkills, searchSkills } = require("./skills.js");
+    const { getResolver } = require("./resolver.js");
     const skills = loadAllSkills(projectRoot);
 
     if (skills.length === 0) {
-      // Fallback to old skills.json
       appendLegacySkillLayer(layers, query, limit);
       return;
     }
 
-    const results = searchSkills(query, skills, limit);
-    if (results.length === 0) return;
+    // Step 1: Rule-based resolution (highest confidence)
+    const resolver = getResolver();
+    const resolved = resolver.resolve(query, skills);
+    const usedNames = new Set<string>();
+    const finalSkills: { skill: any; matchedTriggers: string[]; confidence: number }[] = [];
+
+    if (resolved && resolved.confidence >= 0.5) {
+      finalSkills.push({ skill: resolved.skill, matchedTriggers: resolved.rule.when ? [resolved.rule.when] : [], confidence: resolved.confidence });
+      usedNames.add(resolved.skill.name);
+    }
+
+    // Step 2: Keyword-based search, fill remaining slots
+    const remaining = limit - finalSkills.length;
+    if (remaining > 0) {
+      const results = searchSkills(query, skills, limit);
+      for (const r of results) {
+        if (usedNames.has(r.skill.name)) continue;
+        if (finalSkills.length >= limit) break;
+        finalSkills.push({ skill: r.skill, matchedTriggers: r.matchedTriggers, confidence: r.score });
+        usedNames.add(r.skill.name);
+      }
+    }
+
+    if (finalSkills.length === 0) return;
 
     const lines = ["# Retrieved Skills", ""];
-    for (const r of results) {
-      lines.push(`## ${r.skill.name}`);
-      lines.push(`**Category:** ${r.skill.category}`);
-      lines.push(`**Triggers:** ${r.skill.triggers.join(", ")}`);
+    for (const { skill, matchedTriggers, confidence } of finalSkills) {
+      if (confidence >= 0.5) lines.push(`> **Matched by:** resolver (${(confidence * 100).toFixed(0)}% confidence)`);
+      lines.push(`## ${skill.name}`);
+      lines.push(`**Category:** ${skill.category}`);
+      lines.push(`**Triggers:** ${skill.triggers.join(", ")}`);
       lines.push("");
-      lines.push(r.skill.content);
+      lines.push(skill.content);
       lines.push("");
     }
 
@@ -212,8 +234,8 @@ function appendSkillLayer(layers: PromptLayer[], query: string, limit: number, p
       source: "Skill System",
       content: lines.join("\n"),
     });
-  } catch {
-    // Fallback to legacy skills.json
+  } catch (err) {
+    console.error("[Skill Retrieval] Error:", err);
     appendLegacySkillLayer(layers, query, limit);
   }
 }
