@@ -313,26 +313,6 @@ export class LuluLSP extends LSPBase {
     }
   }
 
-  // ── Gateway API Integration ─────────────────────────────────────────────
-
-  private async queryGateway(prompt: string, code?: string): Promise<{ text: string; sessionId?: string }> {
-    const body: any = { prompt }
-    if (this.sessionId) body.sessionId = this.sessionId
-    if (code) body.context = [{ role: 'user', content: code }]
-
-    const resp = await fetch(`${this.gatewayUrl}/prompt`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    if (!resp.ok) throw new Error(`Gateway error: ${resp.status}`)
-
-    const result = await resp.json()
-    if (result.sessionId) this.sessionId = result.sessionId
-    return result
-  }
-
   // ── Helper Methods ───────────────────────────────────────────────────────
 
   private getBeforePrefix(doc: string, position: Position): string {
