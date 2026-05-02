@@ -52,6 +52,16 @@ npm run desktop:dist
 
 Packaging runs TypeScript and Vite production builds, so it is slower than dev mode.
 
+## Generate Icons
+
+If you need to regenerate the app icon:
+
+```sh
+npm run desktop:icons
+```
+
+This creates `desktop/icon.png` and `desktop/icon.ico`.
+
 ## WSL Note
 
 Building from `/mnt/c` or `/mnt/d` can be slow because WSL is crossing the Windows filesystem boundary. For faster packaging, clone the repo under the Linux filesystem, for example:
@@ -66,10 +76,21 @@ Dev mode is usually fine from `/mnt/d`; packaging is where the slowdown is most 
 
 The Electron app provides:
 
-- Native window controls (minimize, maximize, close)
-- System tray for background operation
-- Desktop notification support
-- Access to the web dashboard with full WebSocket streaming
-- Sub-agent monitor and observability tabs
-- Real-time event log for agent activity
-- Persistent session management across restarts
+- **System Tray** - Click tray icon to show/hide window. Right-click for context menu.
+- **Global Shortcuts**:
+  - `Ctrl+Shift+L` — Toggle window visibility
+  - `Ctrl+Shift+K` — Show window and focus chat input
+- **Tray Menu**:
+  - Open Dashboard
+  - Start/Stop/Restart Daemon
+  - Start API Server
+  - Quit
+- **Auto-daemon** - Automatically starts the personal agent daemon on launch (unless `LULU_DESKTOP_AUTO_DAEMON=false`)
+- **Keep-running tray** - Clicking X hides the window instead of quitting; quit via tray menu
+- **Native window controls** (minimize, maximize, close)
+- **Desktop notification support**
+- **Access to the web dashboard with full WebSocket streaming**
+- **Personal Agent tab** showing daemon status, skill proposals, suggestions, preferences
+- **Sub-agent monitor and observability tabs**
+- **Real-time event log for agent activity**
+- **Persistent session management across restarts**

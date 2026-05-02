@@ -5,21 +5,27 @@ All notable changes to the Lulu project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Sub-Agent Runtime** - Spawn isolated child sessions for parallel research, code edits, tests. Tools: `spawn_agent`, `wait_for_agents`, `agent_status`, `list_agents`, `abort_agent`.
-- **Observability Dashboard** - New "Agents" tab with sub-agent monitor, active sessions table, and real-time event log via WebSocket.
-- **Trajectory Export** - Export sessions as JSON/JSONL for debugging, evaluation, and fine-tuning datasets. Tools: `export_trajectory`, `list_trajectories`, `load_trajectory`. API: `GET/POST /trajectories`.
-- **Execution Backends** - Unified execution interface for local shell, tmux, Docker, and SSH. Tools: `run_in_backend`, `list_backends`, `execution_status`, `list_executions`, `abort_execution`.
-- **Autonomous Multi-Agent Coordination** - Task orchestration with dependency graph resolution. Tools: `orchestrate_task`, `list_coordination_tasks`. API: `/coordinator/tasks/*`.
-- **Always-On Agent Service** - Background heartbeat loop with scheduled jobs and Telegram notifications. Tools: `always_on_status`, `configure_always_on`, `send_notification`, `notification_history`. API: `/always-on/*`.
-- **Notification Manager** - Multi-channel notification dispatch (Telegram, webhook). Dashboard "always-on" tab with real-time status and notification history.
-- **Skill System v2** - File-based skills with SKILL.md format, trigger-based resolver, and smart retrieval
-- **Knowledge Brain** - Pages, entities, relationships with hybrid search (keyword + graph + optional vector)
-- **Curation Tools** - `curate_skills`, `list_skills`, `delete_skill`, `merge_skills` for skill management
-- **Interactive Approval** - CLI approval system with y/n/a/q options for high-risk actions
-- **27 Built-in Skills** - Organized by category (brain, code, git, web, tasks, research, skills, setup, operational)
 
 ### Changed
-- Updated README with comprehensive skill system documentation
+
+## [v0.0.8] - 2026-05-02
+
+### Added
+- **Personal AI Agent** - Persistent daemon with always-on context, learning, proactive behavior, and skill proposals.
+- **Personal Agent Daemon** - `bun run daemon:start`, `/daemon`, daemon PID management. Commands: `/daemon`, `/proposals`, `/preferences`, `/suggestions`, `/learn`, `/memory`, `/queue`, `/research`.
+- **User Profile System** - Persistent user preferences, learnings, skill proposals in `~/.lulu/user-profile.json`.
+- **Skill Proposal Engine** - Auto-detects 5+ tool usage, proposes skills for review, creates `SKILL.md` on approval.
+- **Proactive Suggestion Engine** - Pattern detection, session-start surfacing, Telegram notifications. `/suggestions list|dismiss`.
+- **Global Memory** - Cross-session facts, todos, research queue in `~/.lulu/global-memory.json`. `/memory list|add|search`.
+- **Background Task Queue** - Automation scheduler (every 30s), auto-executes due tasks. `/queue list|add|run|cancel`.
+- **Autonomous Research Mode** - Background research, extracts summary/findings/sources/facts. `/research <query> [--deep|--shallow]`.
+- **Preference Learning** - Tracks preferences from corrections, accepted/rejected suggestions. `/learn key=value`, `/preferences`.
+- **Electron Desktop App** - System tray, global shortcuts (Ctrl+Shift+L, Ctrl+Shift+K), daemon management. `bun run desktop`.
+- **Auto-Start on Boot** - Windows Task Scheduler, macOS LaunchAgent, Linux systemd. `scripts/install-daemon.sh/ps1`.
+- **Personal Agent Dashboard** - Real-time daemon status, proposals, suggestions, preferences in "Personal Agent" tab.
+- **Daemons Tools** - 8 daemon tools: `daemon_status`, `daemon_learn_preference`, `daemon_propose_skill`, `daemon_remember`, `daemon_recall`, `daemon_suggest`, `daemon_list_suggestions`, `daemon_dismiss_suggestion`.
+- **GitHub Pages Docs** - Docs site deployed at `https://jonusnattapong.github.io/lulu/` with sidebar navigation and dark theme.
+- **API Endpoints** - New endpoints: `/daemon/*`, `/proposals`, `/suggestions/*`, `/learn/*`, `/memory/*`, `/queue/*`, `/research/*`.
 
 ## [v0.0.7] - 2026-05-01
 

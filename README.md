@@ -15,6 +15,13 @@ Lulu is designed to work inside your projects, keep project-scoped context, use 
 
 ## Features
 
+- **Personal AI Agent** - Persistent daemon with always-on context, learns user preferences, proposes skills, and acts proactively
+- **Global Memory** - Cross-session persistent facts, todos, and research queue that persists across all projects
+- **Task Queue** - Background automation queue with scheduling, auto-executes due tasks every 30 seconds
+- **Autonomous Research** - Background research without user prompt, extracts findings, sources, and facts
+- **Proactive Suggestions** - Detects patterns and suggests proactively via notifications or session-start surfacing
+- **Skill Proposal Engine** - Auto-detects workflow patterns, proposes skills for user review, creates SKILL.md on approval
+- **Desktop App** - Electron app with system tray, global shortcuts, daemon management, and auto-start on boot
 - **Skill System** (32 built-in skills) - File-based skills with SKILL.md format, resolver, and skill retrieval
 - **Knowledge Brain** - Vector search, entity extraction, hybrid search (keyword + graph)
 - **Sub-Agent Runtime** - Spawn isolated child sessions for parallel research, code edits, and tests
@@ -142,10 +149,18 @@ Common commands:
 | `/trajectory` | Export, list, load session trajectories |
 | `/execution` | Run in shell/tmux/Docker/SSH backends |
 | `/coordinator` | Orchestrate multi-agent tasks |
+| `/daemon [start\|stop\|status]` | Personal agent daemon control |
+| `/proposals [list\|approve\|reject]` | Review skill proposals |
+| `/preferences` | Show learned user preferences |
+| `/suggestions [list\|dismiss]` | Manage proactive suggestions |
+| `/learn <key>=<value>` | Explicitly teach a preference |
+| `/memory [list\|add\|search\|stats]` | Global cross-session memory |
+| `/queue [list\|add\|run\|cancel]` | Background task queue |
+| `/research <query>` | Queue autonomous research topic |
 
 ### Desktop App
 
-Launch the desktop coworker UI:
+Launch the desktop coworker UI with system tray:
 
 ```sh
 bun run desktop
@@ -167,6 +182,44 @@ npm run desktop:dist
 
 See [docs/DESKTOP.md](./docs/DESKTOP.md) for desktop mode details and WSL performance notes.
 
+### Personal Agent Daemon
+
+Lulu can run as a persistent personal AI agent daemon — maintaining context across sessions, learning preferences, and acting proactively.
+
+```sh
+# Start the daemon
+bun run daemon:start
+
+# Check status
+bun run daemon:status
+
+# Stop
+bun run daemon:stop
+```
+
+Inside a session, daemon commands are also available:
+
+| Command | Description |
+| --- | --- |
+| `/daemon start` | Start the daemon |
+| `/daemon stop` | Stop the daemon |
+| `/daemon status` | Show daemon status |
+| `/proposals list` | Show pending skill proposals |
+| `/proposals approve <id>` | Approve and create skill |
+| `/preferences` | Show learned preferences |
+| `/suggestions list` | Show proactive suggestions |
+| `/suggestions dismiss <id>` | Dismiss a suggestion |
+| `/learn key=value` | Teach a preference |
+| `/memory list` | List global memory facts |
+| `/memory add key=value` | Add a fact |
+| `/queue list` | Show background task queue |
+| `/research "query"` | Queue research topic |
+
+Auto-start on boot:
+
+- **Windows:** `powershell -File scripts/install-daemon.ps1`
+- **Linux/macOS:** `bash scripts/install-daemon.sh`
+
 ### Local API
 
 Start the API server:
@@ -187,6 +240,13 @@ Useful endpoints:
 | `GET/POST /trajectories` | Trajectory export/import |
 | `GET/POST /coordinator/tasks/*` | Task orchestration |
 | `GET/POST /always-on/*` | Always-on service |
+| `GET/POST /daemon/*` | Personal agent daemon control |
+| `GET/POST /proposals` | Skill proposal management |
+| `GET/DELETE /suggestions/*` | Proactive suggestions |
+| `GET /learn/stats` | Learning stats and preferences |
+| `GET/POST/DELETE /memory/*` | Global memory (facts, todos) |
+| `GET/POST /queue/tasks/*` | Background task queue |
+| `GET/POST /research/*` | Autonomous research topics |
 
 If `LULU_API_KEY` is set, API requests must include:
 
@@ -483,10 +543,16 @@ Common scripts:
 | `bun run telegram:setup` | Pair a Telegram chat with Lulu |
 | `bun run heartbeat` | Run recurring scheduled jobs |
 | `bun run heartbeat:once` | Run due scheduled jobs once |
+| `bun run daemon` | Start the personal agent daemon |
+| `bun run daemon:start` | Start daemon |
+| `bun run daemon:stop` | Stop daemon |
+| `bun run daemon:status` | Check daemon status |
 | `bun run desktop` | Start desktop dev mode |
 | `bun run build` | Build TypeScript |
 | `bun run typecheck` | Run TypeScript without emitting files |
 | `bun test` | Run tests |
+| `npm run desktop:build` | Build TypeScript + dashboard |
+| `npm run desktop:icons` | Generate app icon |
 | `npm run desktop:pack` | Build unpacked desktop artifact |
 | `npm run desktop:dist` | Build installer/package |
 
@@ -509,12 +575,20 @@ Lulu stores durable runtime state outside the repository:
 | `~/.lulu/sessions.json` | Shared sessions |
 | `~/.lulu/telegram.json` | Telegram token and approved chat bindings |
 | `~/.lulu/history.jsonl` | Interaction history |
+| `~/.lulu/daemon.pid` | Daemon process ID |
+| `~/.lulu/global-memory.json` | Cross-session facts, todos, research queue |
+| `~/.lulu/task-queue.json` | Background automation queue |
+| `~/.lulu/skill-proposals.json` | Pending skill proposals |
+| `~/.lulu/proactive-suggestions.json` | Active proactive suggestions |
+| `~/.lulu/user-profile.json` | User preferences, learnings, proposals |
 | `~/.lulu/projects/<name>/memory.json` | Project memory |
 | `~/.lulu/prompts/<profile>.md` | Prompt profiles |
 | `~/.lulu/skills/` | Skill library |
+| `~/.lulu/skills/auto-generated/` | Auto-created skills from proposals |
 | `~/.lulu/brain/` | Knowledge brain |
 | `~/.lulu/jobs/` | Scheduled job definitions |
 | `~/.lulu/trajectories/` | Exported session trajectories |
+| `~/.lulu/alwayson.json` | Always-on service configuration |
 
 ## License
 

@@ -1,31 +1,44 @@
-appId: com.luluai.coworker
-productName: Lulu Coworker
+appId: com.luluai.desktop
+productName: Lulu
 directories:
   output: release
+  buildResources: desktop
 files:
+  - dist/**/*
+  - dashboard/dist/**/*
   - desktop/**/*
-  - package.json
+  - "!desktop/**/*.cjs"
+  - "!desktop/node_modules/**/*"
 extraResources:
-  - from: dashboard/dist
-    to: dashboard/dist
+  - from: desktop
+    to: desktop
     filter:
-      - "**/*"
-  - from: dist
-    to: dist
-    filter:
-      - "**/*"
-  - from: .env.example
-    to: .env.example
+      - "icon.png"
+      - "icon.ico"
+extraMetadata:
+  main: desktop/main.cjs
 asar: true
 npmRebuild: false
-mac:
-  category: public.app-category.developer-tools
-  target:
-    - dmg
 win:
   target:
     - nsis
+  icon: desktop/icon.ico
+mac:
+  target:
+    - dmg
+  icon: desktop/icon.png
+  category: public.app-category.productivity
 linux:
-  category: Development
   target:
     - AppImage
+  icon: desktop/icon.png
+  category: Utility
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+publish:
+  provider: github
+  owner: JonusNattapong
+  repo: lulu

@@ -39,11 +39,39 @@ Central routing for API, dashboard, and Telegram. Handles channel resolution, se
 
 ### Agent Loop (`src/core/agent.ts`)
 
-Runs the provider/tool loop, streams events, summarizes long histories, reflects useful knowledge into memory, and writes session history.
+Runs the provider/tool loop, streams events, summarizes long histories, reflects useful knowledge into memory, detects skill opportunities, builds proactive/global context into the system prompt, and writes session history.
+
+### Personal Agent Daemon (`src/core/daemon.ts`)
+
+Persistent background process that maintains context across sessions. Starts always-on service, task queue, autonomous research, and proactive engine. Subscribes to eventBus for session, tool, and agent events. Commands: `/daemon`, `/proposals`, `/preferences`, `/suggestions`, `/learn`, `/memory`, `/queue`, `/research`.
 
 ### Coordinator (`src/core/coordinator.ts`)
 
 Task orchestration engine with dependency graph resolution. Routes complex tasks to sub-agents and coordinates multi-agent execution.
+
+### User Profile (`src/core/user-profile.ts`)
+
+Stores user preferences, learnings, skill proposals, and personality settings. Loaded into every agent prompt as user context. Tracks sessions, turns, accepted/rejected suggestions.
+
+### Skill Proposal Manager (`src/core/skill-proposal.ts`)
+
+Auto-detects workflow patterns (e.g., 5+ uses of the same tool), proposes skills for user review, and creates `~/.lulu/skills/auto-generated/<name>/SKILL.md` on approval.
+
+### Proactive Engine (`src/core/proactive.ts`)
+
+Pattern detection from session and tool events. Generates proactive suggestions surfaced at session start or via Telegram notification. Stores in `~/.lulu/proactive-suggestions.json`.
+
+### Global Memory (`src/core/global-memory.ts`)
+
+Cross-session persistent memory that persists across all projects. Stores facts, todo list, and research queue in `~/.lulu/global-memory.json`. Injected into system prompt at session start.
+
+### Task Queue (`src/core/task-queue.ts`)
+
+Background automation queue with scheduler loop (every 30s). Supports task types: research, automation, report, check, reminder, agent. Auto-executes due tasks, sends notifications on completion.
+
+### Autonomous Researcher (`src/core/autonomous-research.ts`)
+
+Background research engine that queues topics, runs via the agent, extracts summary/findings/sources/facts, and stores results in global memory.
 
 ### Session System (`src/core/session.ts`)
 
@@ -57,7 +85,7 @@ Builds the system prompt from ordered layers: base prompt, profile prompt, proje
 
 ### Command Registry (`src/core/commands.ts`)
 
-Defines slash commands once and lets each channel call the same command implementation. Commands: `/help`, `/status`, `/prompt`, `/project`, `/session`, `/reset`, `/new`, `/skills`, `/skillify`, `/brain`, `/resolver`, `/curate`, `/audit`, `/agents`, `/trajectory`, `/execution`, `/coordinator`, `/always-on`, `/send-notification`, `/notification`, `/soul`.
+Defines slash commands once and lets each channel call the same command implementation. Commands: `/help`, `/status`, `/prompt`, `/project`, `/session`, `/reset`, `/new`, `/skills`, `/skillify`, `/brain`, `/resolver`, `/curate`, `/audit`, `/agents`, `/trajectory`, `/execution`, `/coordinator`, `/always-on`, `/send-notification`, `/notification`, `/soul`, `/daemon`, `/proposals`, `/preferences`, `/suggestions`, `/learn`, `/memory`, `/queue`, `/research`.
 
 ### Sub-Agent Runtime (`src/core/subagent.ts`)
 
@@ -110,6 +138,7 @@ Registers tools from modules and exposes provider-compatible tool definitions. T
 | `agent.ts` | Agent status and control |
 | `coordinator.ts` | Task orchestration |
 | `curation.ts` | Skill library management |
+| `daemon-tools.ts` | Daemon status, preference learning, skill proposal, suggestion, memory tools |
 | `execution.ts` | Multi-backend execution |
 | `filesystem.ts` | File read/write/list/search |
 | `git.ts` | Git operations |
@@ -172,12 +201,20 @@ Lulu stores durable user state outside the repository:
 - `identity.json`: users, roles, channel bindings
 - `sessions.json`: central session store
 - `history.jsonl`: interaction history
+- `daemon.pid`: daemon process ID
+- `global-memory.json`: cross-session facts, todos, research queue
+- `task-queue.json`: background automation queue
+- `skill-proposals.json`: pending skill proposals
+- `proactive-suggestions.json`: active proactive suggestions
+- `user-profile.json`: user preferences, learnings, proposals
 - `projects/<name>/memory.json`: project memory
+- `prompts/<profile>.md`: prompt profiles
 - `skills/`: skill library
+- `skills/auto-generated/`: auto-created skills from proposals
 - `brain/`: knowledge brain (pages, entities, relationships)
 - `jobs/`: scheduled job definitions
 - `trajectories/`: exported session trajectories
-- task databases and other project-scoped runtime data
+- `alwayson.json`: always-on service configuration
 
 ## Lessons From OpenClaw And Hermes Agent
 

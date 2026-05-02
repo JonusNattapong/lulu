@@ -49,9 +49,23 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 - [x] **Skill Curation System:** Analyze, optimize, and merge skills automatically.
 - [x] **LSP Neovim Integration:** Language Server Protocol for code actions, explain, fix, refactor.
 
+## Phase 7: Personal AI Agent (Completed)
+- [x] **Personal Agent Daemon:** Persistent background process with always-on context across sessions. `bun run daemon:start`.
+- [x] **User Profile System:** Persistent user preferences, learnings, skill proposals, personality in `~/.lulu/user-profile.json`.
+- [x] **Skill Proposal Engine:** Auto-detects repetitive tool usage (5+ times), proposes skills for user review, creates `SKILL.md` on approval. `/proposals list|approve|reject`.
+- [x] **Proactive Suggestion Engine:** Pattern detection from session events, surface suggestions at session start or via Telegram. `/suggestions list|dismiss`.
+- [x] **Global Memory:** Cross-session persistent facts, todos, and research queue in `~/.lulu/global-memory.json`. `/memory list|add|search`.
+- [x] **Background Task Queue:** Automation queue with scheduler (every 30s), auto-executes due tasks. `/queue list|add|run|cancel`.
+- [x] **Autonomous Research Mode:** Background research without user prompt, extracts summary/findings/sources/facts, stores in global memory. `/research`.
+- [x] **Preference Learning:** Tracks preferences from corrections, accepted/rejected suggestions, repeated tool usage. `/learn key=value`, `/preferences`.
+- [x] **Electron Desktop App:** System tray icon, global shortcuts (Ctrl+Shift+L, Ctrl+Shift+K), daemon management, auto-start on boot.
+- [x] **Auto-Start on Boot:** Windows Task Scheduler, macOS LaunchAgent, Linux systemd unit via `scripts/install-daemon.sh/ps1`.
+- [x] **Personal Agent Dashboard:** Real-time daemon status, skill proposals, proactive suggestions, learned preferences in web dashboard "Personal Agent" tab.
+
 ## Future Vision
 - Real-time pair programming integration with popular IDEs via a local server.
 - Cross-platform mobile app (iOS/Android) for remote control.
 - Fine-tuning pipeline using exported trajectories.
 - Team collaboration with shared skills and brain.
 - Cloud bridge for remote gateway access via Tailscale or similar.
+- Voice mode for hands-free interaction.
