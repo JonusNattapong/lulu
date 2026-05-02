@@ -23,6 +23,7 @@
     "desktop:build": "node scripts/build-desktop.mjs",
     "desktop:pack": "npm run desktop:build && electron-builder --dir",
     "desktop:dist": "npm run desktop:build && electron-builder",
+    "desktop:icons": "node desktop/generate-icons.cjs",
     "dev": "bun src/cli/index.tsx",
     "start": "bun dist/cli/index.js",
     "lulu": "bun src/cli/index.tsx",
@@ -38,6 +39,49 @@
     "daemon:status": "bun src/core/daemon.ts status",
     "test": "bun test",
     "test:watch": "bun test --watch"
+  },
+  "build": {
+    "appId": "com.luluai.desktop",
+    "productName": "Lulu",
+    "directories": {
+      "output": "release",
+      "buildResources": "desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "dashboard/dist/**/*",
+      "desktop/**/*",
+      "!desktop/**/*.cjs",
+      "!desktop/node_modules/**/*"
+    ],
+    "extraMetadata": {
+      "main": "desktop/main.cjs"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "desktop/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "desktop/icon.png",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "desktop/icon.png",
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "JonusNattapong",
+      "repo": "lulu"
+    }
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
