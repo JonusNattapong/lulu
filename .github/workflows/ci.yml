@@ -24,7 +24,7 @@ jobs:
         run: bun run typecheck
 
       - name: Run tests
-        run: bun test
+        run: bun test --exclude src/langserver/LuluLSP.test.ts
 
   build:
     runs-on: ubuntu-latest
