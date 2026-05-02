@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lulu Docs</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --green: #3fb950;
+      --green-bg: #0d1f0d;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-size: 1.8rem;
+      color: var(--accent);
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .version {
+      font-size: 0.75rem;
+      color: var(--green);
+      background: var(--green-bg);
+      padding: 2px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--green);
+    }
+
+    /* Nav tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-tab {
+      padding: 6px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .nav-tab:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .nav-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* Content */
+    #content {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2rem 2.5rem;
+    }
+
+    /* Markdown styles */
+    #content h1 { font-size: 1.8rem; margin-bottom: 1rem; color: #fff; }
+    #content h2 { font-size: 1.4rem; margin: 1.8rem 0 0.8rem; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+    #content h3 { font-size: 1.15rem; margin: 1.4rem 0 0.6rem; color: #e6edf3; }
+    #content h4 { font-size: 1rem; margin: 1.2rem 0 0.5rem; color: #e6edf3; }
+
+    #content p { margin: 0.8rem 0; }
+
+    #content a { color: var(--accent); text-decoration: none; }
+    #content a:hover { text-decoration: underline; color: var(--accent-hover); }
+
+    #content code {
+      background: #0d1117;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.88em;
+      border: 1px solid var(--border);
+    }
+
+    #content pre {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.2rem;
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+
+    #content pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+
+    #content ul, #content ol {
+      margin: 0.8rem 0;
+      padding-left: 1.8rem;
+    }
+
+    #content li { margin: 0.4rem 0; }
+
+    #content blockquote {
+      border-left: 4px solid var(--accent);
+      padding: 0.5rem 1rem;
+      margin: 1rem 0;
+      color: var(--muted);
+      background: rgba(88, 166, 255, 0.05);
+    }
+
+    #content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+
+    #content th, #content td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+    }
+
+    #content th {
+      background: #0d1117;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    #content tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+
+    #content hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+    #content img { max-width: 100%; border-radius: 6px; }
+
+    /* Mermaid diagram container */
+    #content .mermaid { background: #0d1117; border-radius: 6px; padding: 1rem; }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--muted);
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .container { padding: 1rem; }
+      #content { padding: 1rem 1.2rem; }
+      #content h1 { font-size: 1.4rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="logo">🤖</span>
+      <span class="logo-text">Lulu</span>
+      <span class="version">v0.0.7</span>
+    </div>
+
+    <div class="nav-tabs" id="navTabs"></div>
+
+    <div id="content">
+      <div class="loading">Loading...</div>
+    </div>
+
+    <div class="footer">
+      Lulu AI · <a href="https://github.com/JonusNattapong/lulu" style="color: var(--accent)">GitHub</a>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    const docs = [
+      { name: 'README', file: 'README.md', icon: '📖' },
+      { name: 'Architecture', file: 'docs/ARCHITECTURE.md', icon: '🏗️' },
+      { name: 'Roadmap', file: 'docs/ROADMAP.md', icon: '🗺️' },
+      { name: 'Desktop', file: 'docs/DESKTOP.md', icon: '🖥️' },
+      { name: 'LSP Neovim', file: 'docs/LSP-NEOVIM.md', icon: '💡' },
+      { name: 'Decisions', file: 'docs/DECISIONS.md', icon: '📋' },
+    ];
+
+    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+    let currentFile = '';
+
+    async function loadDoc(file) {
+      currentFile = file;
+      document.getElementById('content').innerHTML = '<div class="loading">Loading...</div>';
+
+      try {
+        const res = await fetch(file + '?t=' + Date.now());
+        if (!res.ok) throw new Error('Not found');
+        const text = await res.text();
+
+        // Render mermaid before marked
+        let html = text.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
+          return `<div class="mermaid">${code.trim()}</div>`;
+        });
+
+        document.getElementById('content').innerHTML = marked.parse(html);
+
+        mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+
+        // Update active tab
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+          tab.classList.toggle('active', tab.dataset.file === file);
+        });
+
+        // Update URL
+        history.pushState({}, '', '#' + file);
+      } catch (e) {
+        document.getElementById('content').innerHTML = `<p style="color: #f85149">ไม่พบไฟล์: ${file}</p>`;
+      }
+    }
+
+    // Build nav
+    const nav = document.getElementById('navTabs');
+    docs.forEach(doc => {
+      const a = document.createElement('a');
+      a.className = 'nav-tab';
+      a.dataset.file = doc.file;
+      a.textContent = `${doc.icon} ${doc.name}`;
+      a.addEventListener('click', () => loadDoc(doc.file));
+      nav.appendChild(a);
+    });
+
+    // Load from hash or default
+    const hash = location.hash.slice(1);
+    if (hash) {
+      loadDoc(decodeURIComponent(hash));
+    } else {
+      loadDoc(docs[0].file);
+    }
+
+    window.addEventListener('hashchange', () => {
+      const file = decodeURIComponent(location.hash.slice(1));
+      if (file && file !== currentFile) loadDoc(file);
+    });
+  </script>
+</body>
+</html>

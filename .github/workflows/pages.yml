@@ -1,0 +1,44 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+          exclude: |
+            **/node_modules/**
+            **/dist/**
+            **/.git/**
+            src/**
+            dashboard/**
+            scripts/**
+            *.ts
+            *.tsx
+            tsconfig.json
+            package.json
+            bun.lockb
+            CLAUDE.md
+            CHANGELOG.md
+            CONTRIBUTING.md
+            LICENSE
+            electron-builder.yml
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
