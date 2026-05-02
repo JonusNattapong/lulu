@@ -22,7 +22,16 @@ export type LuluEventType =
   | "alwayson:tick"
   | "alwayson:stop"
   | "notification:send"
-  | "notification:sent";
+  | "notification:sent"
+  | "daemon:start"
+  | "daemon:stop"
+  | "proactive:suggestion:created"
+  | "skill:proposal:created"
+  | "skill:proposal:approved"
+  | "skill:proposal:rejected"
+  | "skill:proposal:merged"
+  | "daemon"
+  | "proactive";
 
 export interface LuluEvent {
   type: LuluEventType;

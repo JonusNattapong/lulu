@@ -196,7 +196,7 @@ export interface CoordinatorTask {
 export interface NotificationPayload {
   title: string;
   body: string;
-  source: "agent" | "scheduler" | "coordinator";
+  source: "agent" | "scheduler" | "coordinator" | "daemon" | "proactive";
   priority: "low" | "medium" | "high";
   timestamp: string;
 }

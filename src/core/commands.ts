@@ -8,6 +8,10 @@ import { loadPromptBuild } from "./config.js";
 import { initSoulVault } from "./soul.js";
 import "./skill-commands.js";
 import "./audit-commands.js";
+import { personalAgentDaemon } from "./daemon.js";
+import { userProfile } from "./user-profile.js";
+import { skillProposalManager } from "./skill-proposal.js";
+import { proactiveEngine } from "./proactive.js";
 
 export interface CommandContext {
   sessionId: string;
@@ -152,5 +156,126 @@ commandRegistry.register({
       return { text: `Soul vault initialized:\n${written.map((file) => `- ${file}`).join("\n")}` };
     }
     return { text: "Usage: /soul init" };
+  }
+});
+
+// Daemon Commands
+commandRegistry.register({
+  name: "daemon",
+  description: "Start/stop/status of personal agent daemon",
+  execute: async (args) => {
+    const sub = args[0]?.toLowerCase();
+    if (!sub || sub === "start") {
+      if (personalAgentDaemon.isRunning()) {
+        return { text: "Daemon is already running." };
+      }
+      personalAgentDaemon.start();
+      return { text: "Personal agent daemon started." };
+    }
+    if (sub === "stop") {
+      if (!personalAgentDaemon.isRunning()) {
+        return { text: "Daemon is not running." };
+      }
+      personalAgentDaemon.stop();
+      return { text: "Daemon stopped." };
+    }
+    if (sub === "status") {
+      const status = personalAgentDaemon.getStatus();
+      return { text: `Daemon ${status.pid ? "running" : "stopped"}\nPID: ${status.pid}\nUptime: ${status.uptime}s\nSessions: ${status.sessions}\nTurns: ${status.turns}\nMemory: ${status.memoryUsage}MB\nActive agents: ${status.activeAgents}\nPending proposals: ${status.pendingProposals}\nActive suggestions: ${status.activeSuggestions}`, data: status };
+    }
+    return { text: "Usage: /daemon [start|stop|status]" };
+  }
+});
+
+commandRegistry.register({
+  name: "proposals",
+  description: "Review skill proposals: /proposals list, approve <id>, reject <id>",
+  execute: async (args) => {
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === "list" || !sub) {
+      const proposals = skillProposalManager.list();
+      if (proposals.length === 0) return { text: "No pending proposals. Run complex workflows to generate suggestions." };
+      const lines = [`${proposals.length} pending proposal(s):`];
+      for (const p of proposals) {
+        lines.push(`  [${p.id}] ${p.name} — ${p.description.slice(0, 60)}... (freq: ${p.frequency})`);
+      }
+      lines.push("\nApprove: /proposals approve <id>");
+      lines.push("Reject:  /proposals reject <id>");
+      return { text: lines.join("\n"), data: proposals };
+    }
+
+    if (sub === "approve" && args[1]) {
+      const result = skillProposalManager.approve(args[1]);
+      if (!result) return { text: `Proposal ${args[1]} not found or already reviewed.` };
+      return { text: `Approved: ${result.name}. Skill file created at ~/.lulu/skills/auto-generated/${result.name.replace(/\s+/g, "-").toLowerCase()}/SKILL.md` };
+    }
+
+    if (sub === "reject" && args[1]) {
+      skillProposalManager.reject(args[1]);
+      return { text: `Rejected proposal ${args[1]}.` };
+    }
+
+    return { text: "Usage: /proposals [list|approve <id>|reject <id>]" };
+  }
+});
+
+commandRegistry.register({
+  name: "preferences",
+  description: "Show learned user preferences: /preferences",
+  execute: async () => {
+    const stats = userProfile.getStats();
+    const top = userProfile.getProfile().preferences.slice(-10);
+    const lines = [`=== User Preferences ===`, `Sessions: ${stats.sessions}, Turns: ${stats.turns}`];
+    if (top.length > 0) {
+      lines.push("Recent preferences:");
+      for (const p of top) {
+        lines.push(`  ${p.key}: ${p.value} (${(p.confidence * 100).toFixed(0)}% confidence)`);
+      }
+    } else {
+      lines.push("No preferences learned yet.");
+    }
+    return { text: lines.join("\n") };
+  }
+});
+
+commandRegistry.register({
+  name: "suggestions",
+  description: "Show proactive suggestions: /suggestions list, dismiss <id>",
+  execute: async (args) => {
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === "list" || !sub) {
+      const suggestions = proactiveEngine.list();
+      if (suggestions.length === 0) return { text: "No active suggestions." };
+      const lines = [`${suggestions.length} active suggestion(s):`];
+      for (const s of suggestions) {
+        lines.push(`  [${s.id}] [${s.priority}] ${s.title}: ${s.body.slice(0, 80)}`);
+      }
+      lines.push("\nDismiss: /suggestions dismiss <id>");
+      return { text: lines.join("\n"), data: suggestions };
+    }
+
+    if (sub === "dismiss" && args[1]) {
+      proactiveEngine.dismiss(args[1]);
+      return { text: `Dismissed suggestion ${args[1]}.` };
+    }
+
+    return { text: "Usage: /suggestions [list|dismiss <id>]" };
+  }
+});
+
+commandRegistry.register({
+  name: "learn",
+  description: "Explicitly teach a preference: /learn <key>=<value>",
+  execute: async (args) => {
+    const input = args.join(" ");
+    const eqIdx = input.indexOf("=");
+    if (eqIdx === -1) return { text: "Usage: /learn <key>=<value> (e.g., /learn codeStyle=typescript)" };
+    const key = input.slice(0, eqIdx).trim();
+    const value = input.slice(eqIdx + 1).trim();
+    if (!key || !value) return { text: "Key and value cannot be empty." };
+    userProfile.recordPreference(key, value, "explicit instruction", "explicit", 1.0);
+    return { text: `Learned: ${key} = ${value}` };
   }
 });

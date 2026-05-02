@@ -32,6 +32,10 @@
     "onboard": "bun src/core/onboarding.ts",
     "heartbeat": "bun src/core/heartbeat.ts",
     "heartbeat:once": "bun src/core/heartbeat.ts --once",
+    "daemon": "bun src/core/daemon.ts",
+    "daemon:start": "bun src/core/daemon.ts start",
+    "daemon:stop": "bun src/core/daemon.ts stop",
+    "daemon:status": "bun src/core/daemon.ts status",
     "test": "bun test",
     "test:watch": "bun test --watch"
   },

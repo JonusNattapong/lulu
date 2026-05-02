@@ -22,6 +22,7 @@ import { subagentTools } from "./modules/subagent.js";
 import { trajectoryTools } from "./modules/trajectory.js";
 import { executionTools } from "./modules/execution.js";
 import { coordinatorTools } from "./modules/coordinator.js";
+import { daemonTools } from "./modules/daemon-tools.js";
 
 // Register all tools
 [
@@ -41,6 +42,7 @@ import { coordinatorTools } from "./modules/coordinator.js";
   ...trajectoryTools,
   ...executionTools,
   ...coordinatorTools,
+  ...daemonTools,
 ].forEach(tool => registry.register(tool));
 
 export const BUILTIN_TOOLS: ToolDef[] = registry.getToolDefs();

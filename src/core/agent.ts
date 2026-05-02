@@ -18,6 +18,9 @@ import pc from "picocolors";
 import { MemoryManager } from "./memory.js";
 import { redact } from "./secrets.js";
 import { eventBus } from "./events.js";
+import { userProfile } from "./user-profile.js";
+import { skillProposalManager } from "./skill-proposal.js";
+import { proactiveEngine } from "./proactive.js";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_HISTORY_MESSAGES = 12;
@@ -84,6 +87,9 @@ export async function runAgent(
   const sessionId = `sess-${Date.now()}`;
   eventBus.emit("session:start", { prompt, projectName: config.projectName }, sessionId);
 
+  // Build proactive suggestion context at session start
+  const proactiveContext = proactiveEngine.buildSessionStartText();
+
   // 1. Initial Memory Search
   const memoryManager = new MemoryManager(config.projectName || "default");
   let memoryContext = "";
@@ -96,10 +102,10 @@ export async function runAgent(
     console.error("[Memory] Search failed at startup:", err);
   }
 
-  // Update system prompt with memory
+  // Update system prompt with memory and proactive context
   const sessionConfig = {
     ...config,
-    systemPrompt: config.systemPrompt + memoryContext
+    systemPrompt: config.systemPrompt + memoryContext + (proactiveContext ? `\n${proactiveContext}` : "")
   };
 
   await loadPlugins();
@@ -168,8 +174,34 @@ export async function runAgent(
     messages.push(toolResultToClaudeMessage(results));
   }
 
-  // After session, reflect and store
+  // After session, reflect, store, and detect patterns
   await reflectAndStore(sessionConfig, messages);
+  proactiveEngine.recordPattern(`session:${config.projectName || "default"}`);
+
+  // Check for skill opportunity in this session
+  if (messages.length > 10) {
+    const toolCounts = new Map<string, number>();
+    for (const msg of messages) {
+      if (typeof msg.content === "string") {
+        const matches = msg.content.matchAll(/"name":\s*"([^"]+)"/g);
+        for (const m of matches) toolCounts.set(m[1], (toolCounts.get(m[1]) || 0) + 1);
+      }
+    }
+    for (const [tool, count] of toolCounts) {
+      if (count >= 5) {
+        const name = skillProposalManager.generateSkillName(`${tool} workflow`, tool);
+        const id = skillProposalManager.propose({
+          name,
+          description: `Repetitive use of \`${tool}\` detected (${count} times). Consider creating a skill.`,
+          category: "auto-generated",
+          triggers: [tool],
+          steps: `Automated workflow using ${tool} tool.`,
+        });
+        proactiveEngine.recordPattern(`skill:${tool}`);
+        console.log(`[Agent] Skill proposal created: ${name} (ID: ${id})`);
+      }
+    }
+  }
   
   // Log session to history
   const logPath = path.join(homedir(), ".lulu", "history.jsonl");
