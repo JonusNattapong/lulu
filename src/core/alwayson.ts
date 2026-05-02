@@ -3,7 +3,6 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { SchedulerManager } from "./scheduler.js";
 import { notificationManager } from "./notifications.js";
-import { MemoryManager } from "./memory.js";
 import { loadConfig } from "./config.js";
 import { eventBus } from "./events.js";
 import type { AlwaysOnConfig, AlwaysOnStatus } from "../types/types.js";
@@ -146,21 +145,25 @@ class AlwaysOnService {
     const config = loadConfig();
     if (!config?.projectName) return;
 
-    const memoryManager = new MemoryManager(config.projectName);
-    const memories = (memoryManager as any).load() || [];
+    // Check memory file size directly
+    const memoryPath = path.join(homedir(), ".lulu", "projects", config.projectName, "memory.db");
     const today = new Date().toISOString().split("T")[0];
     const todayKey = `review_${today}`;
 
     // Only run once per day
-    const lastReview = (memoryManager as any).lastReviewDate;
-    if (lastReview === todayKey) return;
+    const lastReviewPath = path.join(homedir(), ".lulu", `memory_review_${config.projectName}.txt`);
+    if (existsSync(lastReviewPath)) {
+      const lastReview = readFileSync(lastReviewPath, "utf-8").trim();
+      if (lastReview === todayKey) return;
+    }
 
-    const count = Array.isArray(memories) ? memories.length : 0;
-    if (count > 0 && this.config.notifications.telegram) {
+    const size = existsSync(memoryPath) ? readFileSync(memoryPath, "utf-8").length : 0;
+    if (size > 1024 && this.config.notifications.telegram) {
       this.notificationsSent++;
+      writeFileSync(lastReviewPath, todayKey);
       await notificationManager.send({
         title: "Memory Growth Review",
-        body: `Project "${config.projectName}" has ${count} memory entries. Consider reviewing at ~/.lulu/projects/${config.projectName}/memory.json`,
+        body: `Project "${config.projectName}" has ${(size / 1024).toFixed(1)}KB of memory. Consider reviewing.`,
         source: "agent",
         priority: "low",
         timestamp: new Date().toISOString(),

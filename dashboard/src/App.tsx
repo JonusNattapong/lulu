@@ -90,18 +90,30 @@ const App: React.FC = () => {
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
 
+  // Helper: format uptime seconds to human readable
+  const formatUptime = (secs: number) => {
+    if (!secs) return '—';
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs/60)}m ${secs%60}s`;
+    return `${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m`;
+  };
+
   const fetchData = async () => {
     try {
-      const [s, h, m, mc, p, c, sess, ao, notif] = await Promise.all([
-        axios.get(`${API_BASE}/status`),
-        axios.get(`${API_BASE}/history`),
-        axios.get(`${API_BASE}/memory`),
-        axios.get(`${API_BASE}/mcp`),
-        axios.get(`${API_BASE}/plugins`),
+      const [s, h, m, mc, p, c, sess, ao, notif, ds, prop, sug, ls] = await Promise.all([
+        axios.get(`${API_BASE}/status`).catch(() => ({ data: null })),
+        axios.get(`${API_BASE}/history`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/memory`).catch(() => ({ data: { content: '' } })),
+        axios.get(`${API_BASE}/mcp`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/plugins`).catch(() => ({ data: [] })),
         axios.get(`${API_BASE}/capabilities`).catch(() => null),
         axios.get(`${API_BASE}/sessions`).catch(() => ({ data: [] })),
         axios.get(`${API_BASE}/always-on/status`).catch(() => ({ data: null })),
         axios.get(`${API_BASE}/notifications/history`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/daemon/status`).catch(() => ({ data: null })),
+        axios.get(`${API_BASE}/proposals`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/suggestions`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/learn/stats`).catch(() => ({ data: null })),
       ]);
       setStatus(s.data);
       setHistory(h.data);
@@ -112,6 +124,13 @@ const App: React.FC = () => {
       setSessions(sess.data);
       setAlwaysOnStatus(ao.data);
       setNotifications(notif.data || []);
+      setDaemonStatus(ds.data);
+      setProposals(prop.data?.proposals || prop.data || []);
+      setSuggestions(sug.data?.suggestions || sug.data || []);
+      setLearnStats(ls.data);
+      if (ls.data?.recentPreferences) {
+        setLearnedPreferences(ls.data.recentPreferences);
+      }
     } catch (err) {
       console.error('Fetch failed', err);
     }
@@ -137,6 +156,11 @@ const App: React.FC = () => {
   const [eventsCollapsed, setEventsCollapsed] = useState(false);
   const [alwaysOnStatus, setAlwaysOnStatus] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [daemonStatus, setDaemonStatus] = useState<any>(null);
+  const [proposals, setProposals] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [learnStats, setLearnStats] = useState<any>(null);
+  const [learnedPreferences, setLearnedPreferences] = useState<any[]>([]);
   const MAX_EVENTS = 200;
 
   // WebSocket for real-time streaming
@@ -273,7 +297,7 @@ const App: React.FC = () => {
           </div>
           
           <nav className="flex bg-slate-800/50 p-1 rounded-xl border border-slate-700 flex-wrap gap-1">
-            {['overview', 'chat', 'memory', 'ecosystem', 'capabilities', 'agents', 'always-on', 'history'].map((tab) => (
+            {['overview', 'chat', 'memory', 'ecosystem', 'capabilities', 'agents', 'always-on', 'personal-agent', 'history'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -702,6 +726,186 @@ const App: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'personal-agent' && (
+            <motion.div
+              key="personal-agent"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-8"
+            >
+              {/* Daemon Status */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-cyan-400">
+                  <Zap size={20} /> Personal Agent Daemon
+                  <span className="ml-2 text-xs font-bold px-2 py-1 rounded-full bg-green-500/10 text-green-400">
+                    {daemonStatus?.pid ? 'RUNNING' : 'STOPPED'}
+                  </span>
+                  <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded-full ml-2">
+                    PID: {daemonStatus?.pid || '—'}
+                  </span>
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{daemonStatus?.uptime ? formatUptime(daemonStatus.uptime) : '—'}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Uptime</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{daemonStatus?.sessions ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Sessions</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{daemonStatus?.turns ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Turns</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{daemonStatus?.memoryUsage ?? 0}MB</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Memory</div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { axios.post(`${API_BASE}/daemon/start`).catch(() => {}); setTimeout(fetchData, 1000); }}
+                    className="px-4 py-2 bg-green-500/20 text-green-400 rounded-xl text-sm font-semibold hover:bg-green-500/30 transition-all"
+                  >
+                    Start Daemon
+                  </button>
+                  <button
+                    onClick={() => { axios.post(`${API_BASE}/daemon/stop`).catch(() => {}); setTimeout(fetchData, 1000); }}
+                    className="px-4 py-2 bg-red-500/20 text-red-400 rounded-xl text-sm font-semibold hover:bg-red-500/30 transition-all"
+                  >
+                    Stop Daemon
+                  </button>
+                  <button
+                    onClick={fetchData}
+                    className="px-4 py-2 bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-600 transition-all"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Skill Proposals */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-yellow-400">
+                  <MessageSquare size={20} /> Skill Proposals
+                  <span className="ml-2 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded-full">{proposals.length}</span>
+                </h2>
+                {proposals.length === 0 ? (
+                  <p className="text-slate-500 italic text-sm py-4">No pending proposals. Run complex workflows to generate suggestions.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {proposals.map(p => (
+                      <div key={p.id} className="p-4 bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-yellow-500/30 transition-all">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <span className="font-bold text-slate-100">{p.name}</span>
+                            <span className="ml-2 text-[10px] text-slate-500 bg-slate-700 px-2 py-1 rounded-full">freq: {p.frequency}</span>
+                          </div>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${
+                            p.status === 'approved' ? 'bg-green-500/10 text-green-400' :
+                            p.status === 'rejected' ? 'bg-red-500/10 text-red-400' :
+                            'bg-yellow-500/10 text-yellow-400'
+                          }`}>{p.status}</span>
+                        </div>
+                        <p className="text-sm text-slate-400 mb-3">{p.description}</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { axios.post(`${API_BASE}/proposals/approve/${p.id}`).then(() => fetchData()); }}
+                            className="px-3 py-1 bg-green-500/20 text-green-400 rounded-lg text-xs font-semibold hover:bg-green-500/30"
+                          >Approve</button>
+                          <button
+                            onClick={() => { axios.post(`${API_BASE}/proposals/reject/${p.id}`).then(() => fetchData()); }}
+                            className="px-3 py-1 bg-red-500/20 text-red-400 rounded-lg text-xs font-semibold hover:bg-red-500/30"
+                          >Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Proactive Suggestions */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-purple-400">
+                  <Zap size={20} /> Proactive Suggestions
+                  <span className="ml-2 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded-full">{suggestions.length}</span>
+                </h2>
+                {suggestions.length === 0 ? (
+                  <p className="text-slate-500 italic text-sm py-4">No active suggestions.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {suggestions.map(s => (
+                      <div key={s.id} className={`p-4 rounded-xl border text-sm ${
+                        s.priority === 'high' ? 'border-red-500/30 bg-red-500/5' :
+                        s.priority === 'medium' ? 'border-yellow-500/30 bg-yellow-500/5' :
+                        'border-slate-700 bg-slate-800/30'
+                      }`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-bold text-slate-200">💡 {s.title}</span>
+                            <p className="text-slate-400 text-xs mt-1">{s.body}</p>
+                            <div className="text-[10px] text-slate-600 mt-2">{s.type} · {s.createdAt}</div>
+                          </div>
+                          <button
+                            onClick={() => { axios.delete(`${API_BASE}/suggestions/${s.id}`).then(() => fetchData()); }}
+                            className="text-slate-500 hover:text-slate-200 text-xs"
+                          >dismiss</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* User Preferences & Learnings */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-green-400">
+                  <Database size={20} /> Learned Preferences
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{learnStats?.sessions ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Sessions</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{learnStats?.turns ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Turns</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{learnStats?.preferences ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Preferences</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{learnStats?.learnings ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Learnings</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{learnStats?.activeProjects ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Projects</div>
+                  </div>
+                </div>
+                {learnedPreferences.length > 0 ? (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {learnedPreferences.map((p: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl border border-slate-700/50">
+                        <div>
+                          <span className="text-sm font-semibold text-slate-200">{p.key}</span>
+                          <span className="ml-2 text-sm text-cyan-400">= {p.value}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500">{Math.round(p.confidence * 100)}%</span>
+                          <span className="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-400">{p.source}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500 italic text-sm py-4">No preferences learned yet.</p>
                 )}
               </div>
             </motion.div>

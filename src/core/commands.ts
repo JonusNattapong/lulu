@@ -12,6 +12,9 @@ import { personalAgentDaemon } from "./daemon.js";
 import { userProfile } from "./user-profile.js";
 import { skillProposalManager } from "./skill-proposal.js";
 import { proactiveEngine } from "./proactive.js";
+import { globalMemory } from "./global-memory.js";
+import { taskQueue } from "./task-queue.js";
+import { autonomousResearcher } from "./autonomous-research.js";
 
 export interface CommandContext {
   sessionId: string;
@@ -277,5 +280,129 @@ commandRegistry.register({
     if (!key || !value) return { text: "Key and value cannot be empty." };
     userProfile.recordPreference(key, value, "explicit instruction", "explicit", 1.0);
     return { text: `Learned: ${key} = ${value}` };
+  }
+});
+
+// Memory Commands
+commandRegistry.register({
+  name: "memory",
+  description: "Global memory: /memory list, add <key>=<value>, search <query>",
+  execute: async (args) => {
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === "list") {
+      const facts = globalMemory.search("");
+      if (facts.length === 0) return { text: "No facts in global memory." };
+      const lines = [`${facts.length} fact(s):`];
+      for (const f of facts.slice(0, 20)) {
+        lines.push(`  ${f.key}: ${f.value} [${f.category}]`);
+      }
+      return { text: lines.join("\n"), data: facts };
+    }
+
+    if (sub === "add" && args[1]) {
+      const input = args.slice(1).join(" ");
+      const eqIdx = input.indexOf("=");
+      if (eqIdx === -1) return { text: "Usage: /memory add <key>=<value>" };
+      const key = input.slice(0, eqIdx).trim();
+      const value = input.slice(eqIdx + 1).trim();
+      globalMemory.addFact({ key, value, source: "user", category: "fact", confidence: 0.9 });
+      return { text: `Added: ${key} = ${value}` };
+    }
+
+    if (sub === "search" && args[1]) {
+      const results = globalMemory.search(args.slice(1).join(" "));
+      if (results.length === 0) return { text: "No matching facts found." };
+      const lines = [`${results.length} match(es):`];
+      for (const r of results) lines.push(`  ${r.key}: ${r.value}`);
+      return { text: lines.join("\n"), data: results };
+    }
+
+    if (sub === "stats") {
+      const stats = globalMemory.getStats();
+      return { text: `Global Memory: ${stats.totalFacts} facts, ${stats.todoCount} todos, ${stats.pendingResearch} research items`, data: stats };
+    }
+
+    return { text: "Usage: /memory [list|add <key>=<value>|search <query>|stats]" };
+  }
+});
+
+// Task Queue Commands
+commandRegistry.register({
+  name: "queue",
+  description: "Task queue: /queue list, add <name>, run <id>, cancel <id>",
+  execute: async (args) => {
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === "list" || !sub) {
+      const tasks = taskQueue.list();
+      if (tasks.length === 0) return { text: "No tasks in queue." };
+      const lines = [`${tasks.length} task(s):`];
+      for (const t of tasks.slice(0, 20)) {
+        lines.push(`  [${t.id.slice(-8)}] [${t.status}] ${t.priority} — ${t.name}`);
+      }
+      return { text: lines.join("\n"), data: tasks };
+    }
+
+    if (sub === "add" && args[1]) {
+      const name = args.slice(1).join(" ");
+      const task = taskQueue.enqueue({ name, type: "automation", priority: "medium" });
+      return { text: `Queued: ${task.id.slice(-8)} — ${task.name}` };
+    }
+
+    if (sub === "run" && args[1]) {
+      const id = args[1].includes("-") ? args[1] : `queue-${args[1]}`;
+      const result = await taskQueue.run(id);
+      return { text: `Result: ${result}` };
+    }
+
+    if (sub === "cancel" && args[1]) {
+      const id = args[1].includes("-") ? args[1] : `queue-${args[1]}`;
+      taskQueue.cancel(id);
+      return { text: "Task cancelled." };
+    }
+
+    if (sub === "stats") {
+      const stats = taskQueue.getStats();
+      return { text: `Task Queue: ${stats.total} total, ${stats.pending} pending, ${stats.scheduled} scheduled`, data: stats };
+    }
+
+    return { text: "Usage: /queue [list|add <name>|run <id>|cancel <id>|stats]" };
+  }
+});
+
+// Research Commands
+commandRegistry.register({
+  name: "research",
+  description: "Autonomous research: /research <query>, /research list, /research run <id>",
+  execute: async (args) => {
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === "list" || !sub) {
+      const topics = autonomousResearcher.list();
+      if (topics.length === 0) return { text: "No research topics." };
+      const lines = [`${topics.length} topic(s):`];
+      for (const t of topics.slice(0, 20)) {
+        lines.push(`  [${t.id.slice(-8)}] [${t.status}] [${t.depth}] ${t.query.slice(0, 60)}`);
+      }
+      return { text: lines.join("\n"), data: topics };
+    }
+
+    if (args[0] && sub !== "list" && sub !== "run") {
+      // Treat as query
+      const depth = (args.includes("--deep")) ? "deep" : (args.includes("--shallow")) ? "shallow" : "medium";
+      const id = autonomousResearcher.queue(args.join(" "), depth);
+      return { text: `Research queued: ${id.slice(-8)}. Use /research list to track progress.` };
+    }
+
+    if (sub === "run" && args[1]) {
+      const id = args.slice(1).join("-");
+      const topic = autonomousResearcher.list().find(t => t.id.includes(id));
+      if (!topic) return { text: `Research ${id} not found.` };
+      await autonomousResearcher.runTopic(topic);
+      return { text: `Research done: ${topic.result?.summary?.slice(0, 200) || "completed"}` };
+    }
+
+    return { text: "Usage: /research <query> [--deep|--shallow], /research list, /research run <id>" };
   }
 });

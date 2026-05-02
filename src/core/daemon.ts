@@ -12,6 +12,9 @@ import { notificationManager } from "./notifications.js";
 import { alwaysOnService } from "./alwayson.js";
 import { SchedulerManager } from "./scheduler.js";
 import { subAgentManager } from "./subagent.js";
+import { globalMemory } from "./global-memory.js";
+import { taskQueue } from "./task-queue.js";
+import { autonomousResearcher } from "./autonomous-research.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -28,6 +31,9 @@ export interface DaemonStatus {
   activeAgents: number;
   pendingProposals: number;
   activeSuggestions: number;
+  globalMemory: { facts: number; todos: number; pendingResearch: number };
+  taskQueue: { pending: number; scheduled: number; total: number };
+  autoResearch: boolean;
 }
 
 interface PersistentContext {
@@ -75,6 +81,11 @@ class PersonalAgentDaemon {
 
     // Start always-on service
     alwaysOnService.start();
+
+    // Enable auto research if configured
+    if (process.env.LULU_AUTO_RESEARCH === "true") {
+      autonomousResearcher.enableAutoResearch(true);
+    }
 
     // Run proactive analysis on start
     this.runStartupAnalysis();
@@ -296,6 +307,9 @@ class PersonalAgentDaemon {
       activeAgents: subAgentManager.list().filter(a => a.status === "running" || a.status === "pending").length,
       pendingProposals: skillProposalManager.getStats().proposed,
       activeSuggestions: proactiveEngine.getActive().length,
+      globalMemory: { facts: globalMemory.getStats().totalFacts, todos: globalMemory.getStats().todoCount, pendingResearch: globalMemory.getStats().pendingResearch },
+      taskQueue: taskQueue.getStats(),
+      autoResearch: autonomousResearcher.isAutoMode(),
     };
   }
 

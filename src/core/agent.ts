@@ -21,6 +21,7 @@ import { eventBus } from "./events.js";
 import { userProfile } from "./user-profile.js";
 import { skillProposalManager } from "./skill-proposal.js";
 import { proactiveEngine } from "./proactive.js";
+import { globalMemory } from "./global-memory.js";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_HISTORY_MESSAGES = 12;
@@ -90,6 +91,9 @@ export async function runAgent(
   // Build proactive suggestion context at session start
   const proactiveContext = proactiveEngine.buildSessionStartText();
 
+  // Build global memory context
+  const globalContext = globalMemory.buildContext();
+
   // 1. Initial Memory Search
   const memoryManager = new MemoryManager(config.projectName || "default");
   let memoryContext = "";
@@ -102,10 +106,10 @@ export async function runAgent(
     console.error("[Memory] Search failed at startup:", err);
   }
 
-  // Update system prompt with memory and proactive context
+  // Update system prompt with memory, proactive context, and global context
   const sessionConfig = {
     ...config,
-    systemPrompt: config.systemPrompt + memoryContext + (proactiveContext ? `\n${proactiveContext}` : "")
+    systemPrompt: config.systemPrompt + memoryContext + (proactiveContext ? `\n${proactiveContext}` : "") + (globalContext ? `\n${globalContext}` : "")
   };
 
   await loadPlugins();

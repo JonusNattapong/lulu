@@ -18,6 +18,9 @@ import { exportTrajectory, saveExportToFile, listExportedTrajectories, loadTraje
 import { coordinatorManager } from "../core/coordinator.js";
 import { alwaysOnService } from "../core/alwayson.js";
 import { notificationManager } from "../core/notifications.js";
+import { globalMemory } from "../core/global-memory.js";
+import { taskQueue } from "../core/task-queue.js";
+import { autonomousResearcher } from "../core/autonomous-research.js";
 
 const subscribers = new Set<any>();
 
@@ -227,6 +230,130 @@ const app = new Elysia()
   .post("/always-on/configure", ({ body }) => { alwaysOnService.updateConfig(body as any); return alwaysOnService.getStatus(); })
   // Notifications
   .get("/notifications/history", ({ query }) => notificationManager.history(parseInt((query as any).limit || "20", 10)))
+  // Daemon (Personal Agent)
+  .get("/daemon/status", () => {
+    try {
+      const { personalAgentDaemon } = require('../core/daemon.js');
+      return personalAgentDaemon.getStatus();
+    } catch { return { pid: 0, running: false }; }
+  })
+  .post("/daemon/start", async () => {
+    try {
+      const { personalAgentDaemon } = await import('../core/daemon.js');
+      if (!personalAgentDaemon.isRunning()) personalAgentDaemon.start();
+      return personalAgentDaemon.getStatus();
+    } catch { return { error: "Daemon not available" }; }
+  })
+  .post("/daemon/stop", async () => {
+    try {
+      const { personalAgentDaemon } = await import('../core/daemon.js');
+      personalAgentDaemon.stop();
+      return { stopped: true };
+    } catch { return { error: "Daemon not available" }; }
+  })
+  // Skill Proposals
+  .get("/proposals", async () => {
+    try {
+      const { skillProposalManager } = await import('../core/skill-proposal.js');
+      return { proposals: skillProposalManager.list(), stats: skillProposalManager.getStats() };
+    } catch { return { proposals: [], stats: {} }; }
+  })
+  .post("/proposals/approve/:id", async ({ params }) => {
+    try {
+      const { skillProposalManager } = await import('../core/skill-proposal.js');
+      return skillProposalManager.approve(params.id) ?? { error: "Not found" };
+    } catch { return { error: "Not available" }; }
+  })
+  .post("/proposals/reject/:id", async ({ params }) => {
+    try {
+      const { skillProposalManager } = await import('../core/skill-proposal.js');
+      skillProposalManager.reject(params.id);
+      return { rejected: true };
+    } catch { return { error: "Not available" }; }
+  })
+  // Proactive Suggestions
+  .get("/suggestions", async () => {
+    try {
+      const { proactiveEngine } = await import('../core/proactive.js');
+      return { suggestions: proactiveEngine.list() };
+    } catch { return { suggestions: [] }; }
+  })
+  .delete("/suggestions/:id", async ({ params }) => {
+    try {
+      const { proactiveEngine } = await import('../core/proactive.js');
+      proactiveEngine.dismiss(params.id);
+      return { dismissed: true };
+    } catch { return { error: "Not available" }; }
+  })
+  // Learning Stats
+  .get("/learn/stats", async () => {
+    try {
+      const { userProfile } = await import('../core/user-profile.js');
+      return { ...userProfile.getStats(), recentPreferences: userProfile.getProfile().preferences.slice(-20) };
+    } catch { return { sessions: 0, turns: 0, preferences: 0, proposals: 0, learnings: 0, activeProjects: 0, recentPreferences: [] }; }
+  })
+  .post("/learn", async ({ body }) => {
+    try {
+      const { userProfile } = await import('../core/user-profile.js');
+      const b = body as any;
+      if (b.key && b.value) userProfile.recordPreference(b.key, b.value, b.context || "api", "explicit", b.confidence || 1.0);
+      return { learned: true };
+    } catch { return { error: "Not available" }; }
+  })
+  // Global Memory
+  .get("/memory/facts", () => ({ facts: globalMemory.search(""), stats: globalMemory.getStats() }))
+  .post("/memory/facts", ({ body }) => {
+    const b = body as any;
+    if (!b.key || !b.value) return { error: "key and value required" };
+    globalMemory.addFact({ key: b.key, value: b.value, source: "user", category: b.category || "fact", confidence: b.confidence || 0.8 });
+    return { added: true };
+  }, {
+    body: t.Object({ key: t.String(), value: t.String(), category: t.Optional(t.String()), confidence: t.Optional(t.Number()) })
+  })
+  .delete("/memory/facts/:key", ({ params }) => ({ deleted: globalMemory.deleteFact(params.key) }))
+  .get("/memory/todos", () => ({ todos: globalMemory.listTodos() }))
+  .post("/memory/todos", ({ body }) => {
+    const b = body as any;
+    globalMemory.addTodo(b.text, b.priority || "medium");
+    return { added: true };
+  }, {
+    body: t.Object({ text: t.String(), priority: t.Optional(t.Union([t.Literal("low"), t.Literal("medium"), t.Literal("high")])) })
+  })
+  .patch("/memory/todos/:id", ({ params }) => {
+    globalMemory.toggleTodo(params.id);
+    return { toggled: true };
+  })
+  // Task Queue
+  .get("/queue/tasks", () => ({ tasks: taskQueue.list(), stats: taskQueue.getStats() }))
+  .post("/queue/tasks", ({ body }) => {
+    const b = body as any;
+    const task = taskQueue.enqueue({ name: b.name, description: b.description, type: b.type, priority: b.priority, trigger: b.trigger });
+    return { taskId: task.id };
+  }, {
+    body: t.Object({ name: t.String(), description: t.Optional(t.String()), type: t.Optional(t.String()), priority: t.Optional(t.String()), trigger: t.Optional(t.Any()) })
+  })
+  .post("/queue/tasks/:id/run", async ({ params }) => {
+    try { return { result: await taskQueue.run(params.id) }; }
+    catch (err: any) { return { error: err.message }; }
+  })
+  .delete("/queue/tasks/:id", ({ params }) => { taskQueue.cancel(params.id); return { cancelled: true }; })
+  // Autonomous Research
+  .get("/research/topics", () => ({ topics: autonomousResearcher.list(), stats: autonomousResearcher.getStats() }))
+  .post("/research/topics", ({ body }) => {
+    const b = body as any;
+    const id = autonomousResearcher.queue(b.query, b.depth || "medium", b.focus);
+    return { id };
+  }, {
+    body: t.Object({ query: t.String(), depth: t.Optional(t.Union([t.Literal("shallow"), t.Literal("medium"), t.Literal("deep")])), focus: t.Optional(t.Array(t.String())) })
+  })
+  .post("/research/topics/:id/run", async ({ params }) => {
+    const topics = autonomousResearcher.list();
+    const topic = topics.find(t => t.id === params.id);
+    if (!topic) return { error: "Not found" };
+    const updated = await autonomousResearcher.runTopic(topic);
+    return { summary: updated.result?.summary };
+  })
+  .post("/research/auto", () => { autonomousResearcher.enableAutoResearch(true); return { autoEnabled: true }; })
   .listen(19456);
 
 console.log(`🦊 Elysia is running at http://localhost:19456 (WebSocket: ws://localhost:19456/ws)`);
