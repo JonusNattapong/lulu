@@ -22,6 +22,7 @@ import { globalMemory } from "../core/global-memory.js";
 import { taskQueue } from "../core/task-queue.js";
 import { autonomousResearcher } from "../core/autonomous-research.js";
 import { listSoulFiles, getSoulFile, writeSoulFile, deleteSoulFile, hasSoulVault, readGlobalSoulFiles, initGlobalSoulVault } from "../core/soul.js";
+import { rebuildIndex } from "../core/workspace_indexer.js";
 
 const subscribers = new Set<any>();
 
@@ -397,6 +398,14 @@ const app = new Elysia()
     const name = params.name.endsWith(".md") ? params.name : `${params.name}.md`;
     const file = readGlobalSoulFiles().find(f => f.name === name);
     return file ?? { error: "Not found" };
+  })
+  // Workspace Indexer
+  .post("/workspace/index", ({ query }) => {
+    try {
+      const projectRoot = (query as any).projectRoot || process.cwd();
+      const result = rebuildIndex(projectRoot);
+      return { indexed: result.indexed, elapsed: result.elapsed };
+    } catch (err: any) { return { error: err.message }; }
   })
   .listen(19456);
 

@@ -469,3 +469,31 @@ commandRegistry.register({
     return { text: "Usage: /research <query> [--deep|--shallow], /research list, /research run <id>" };
   }
 });
+
+// Workspace Indexer Commands
+commandRegistry.register({
+  name: "index",
+  description: "Index project: /index, /index rebuild",
+  execute: async (args, { config }) => {
+    const sub = args[0]?.toLowerCase();
+    const projectRoot = config.projectRoot || process.cwd();
+
+    if (sub === "rebuild") {
+      try {
+        const { rebuildIndex } = await import("./workspace_indexer.js");
+        const result = rebuildIndex(projectRoot);
+        return { text: `Indexed ${result.indexed} files in ${result.elapsed}ms` };
+      } catch (err: any) {
+        return { text: `Index error: ${err.message}` };
+      }
+    }
+
+    try {
+      const { rebuildIndex } = await import("./workspace_indexer.js");
+      const result = rebuildIndex(projectRoot);
+      return { text: `Indexed ${result.indexed} files in ${result.elapsed}ms` };
+    } catch (err: any) {
+      return { text: `Index error: ${err.message}` };
+    }
+  }
+});

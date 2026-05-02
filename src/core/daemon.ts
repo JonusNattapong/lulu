@@ -15,6 +15,9 @@ import { subAgentManager } from "./subagent.js";
 import { globalMemory } from "./global-memory.js";
 import { taskQueue } from "./task-queue.js";
 import { autonomousResearcher } from "./autonomous-research.js";
+import { selfReflection } from "./self-reflection.js";
+import { preferenceLearner } from "./preferences.js";
+import { syncPreferencesToGlobalSoul } from "./soul.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -147,6 +150,11 @@ class PersonalAgentDaemon {
       this.recordToolPattern(data);
     });
 
+    // Tool end — learn from tool results
+    eventBus.on("tool:end", (data) => {
+      this.recordToolResult(data);
+    });
+
     // Sub-agent events
     eventBus.on("subagent:end", (data) => {
       this.onSubAgentDone(data);
@@ -187,8 +195,23 @@ class PersonalAgentDaemon {
       }
     }
 
+    // Record session metrics for self-reflection
+    const turns = data.messages?.length || 0;
+    const toolCalls = this.countToolCalls(data.messages);
+    const errors = this.countErrors(data.messages);
+    selfReflection.recordSession({
+      turns,
+      toolCalls,
+      errors,
+      timeMs: Date.now() - new Date(data.messages?.[0]?.timestamp || Date.now()).getTime(),
+      completed: true,
+    });
+
     // Run skill proposal detection
     this.detectSkillOpportunity(data);
+
+    // Sync preferences to global soul
+    syncPreferencesToGlobalSoul(userProfile.getProfile());
 
     // Check if reflection is due
     const lastRef = new Date(this.context.lastReflection).getTime();
@@ -200,6 +223,37 @@ class PersonalAgentDaemon {
   private recordToolPattern(data: any): void {
     proactiveEngine.recordPattern(`tool:${data.name}`);
     userProfile.addTurn();
+  }
+
+  private recordToolResult(data: any): void {
+    if (data.result?.is_error) {
+      proactiveEngine.recordPattern(`error:${data.name}`);
+      userProfile.addLearning("insight", `Tool ${data.name} failed: ${data.result.content?.slice(0, 100)}`, `tool:${data.name}`, 0.8);
+    }
+    // Learn from repeated tool usage
+    preferenceLearner.learnFromToolUsage(data.name, 1);
+  }
+
+  private countToolCalls(messages: any[]): number {
+    if (!messages) return 0;
+    let count = 0;
+    for (const msg of messages) {
+      if (typeof msg.content === "string" && msg.content.includes("tool_use")) {
+        count += (msg.content.match(/tool_use/g) || []).length;
+      }
+    }
+    return count;
+  }
+
+  private countErrors(messages: any[]): number {
+    if (!messages) return 0;
+    let count = 0;
+    for (const msg of messages) {
+      if (typeof msg.content === "string") {
+        if (msg.content.includes("is_error") || msg.content.toLowerCase().includes("error")) count++;
+      }
+    }
+    return count;
   }
 
   private onSubAgentDone(data: any): void {
@@ -269,30 +323,29 @@ class PersonalAgentDaemon {
   private async runSelfReflection(): Promise<void> {
     this.context.lastReflection = new Date().toISOString();
 
-    const stats = userProfile.getStats();
-    const proposals = skillProposalManager.getStats();
-    const suggestions = proactiveEngine.getActive();
-
-    // Generate insights
-    if (stats.sessions > 0) {
-      const avgTurns = stats.turns / stats.sessions;
-      if (avgTurns > 20) {
-        userProfile.addLearning(
-          "insight",
-          `Long sessions detected (avg ${avgTurns.toFixed(0)} turns). Consider breaking into smaller tasks.`,
-          `sessions:${stats.sessions}:avg:${avgTurns}`,
-          0.6
-        );
+    // Run full reflection analysis on recent sessions
+    const results = selfReflection.reflect();
+    for (const r of results) {
+      for (const insight of r.insights) {
+        proactiveEngine.suggest({
+          title: "Agent Insight",
+          body: insight,
+          context: `reflection:${r.timestamp}`,
+          type: "recommendation",
+          priority: r.userSatisfaction < 0.7 ? "medium" : "low",
+          tags: ["reflection", "insight"],
+        });
       }
     }
 
-    // Log reflection
-    userProfile.addLearning(
-      "insight",
-      `Reflection at ${this.context.lastReflection}: ${stats.sessions} sessions, ${proposals.proposed} pending proposals, ${suggestions.length} active suggestions.`,
-      "periodic-reflection",
-      0.5
-    );
+    // Build and log preference rules
+    const prefRules = preferenceLearner.buildPreferenceRules();
+    if (prefRules.length > 0) {
+      proactiveEngine.recordPattern(`preferences:${prefRules.length}-rules`);
+    }
+
+    // Sync preferences to global soul
+    syncPreferencesToGlobalSoul(userProfile.getProfile());
   }
 
   /** Get daemon status */

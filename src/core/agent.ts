@@ -22,6 +22,8 @@ import { userProfile } from "./user-profile.js";
 import { skillProposalManager } from "./skill-proposal.js";
 import { proactiveEngine } from "./proactive.js";
 import { globalMemory } from "./global-memory.js";
+import { preferenceLearner } from "./preferences.js";
+import { selfReflection } from "./self-reflection.js";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_HISTORY_MESSAGES = 12;
@@ -197,15 +199,27 @@ export async function runAgent(
   await reflectAndStore(sessionConfig, messages);
   proactiveEngine.recordPattern(`session:${config.projectName || "default"}`);
 
+  // Detect preferences from conversation text
+  for (const msg of messages) {
+    if (typeof msg.content === "string") {
+      preferenceLearner.detectPreferences(msg.content);
+    }
+  }
+
+  // Learn from tool usage frequency
+  const toolCounts = new Map<string, number>();
+  for (const msg of messages) {
+    if (typeof msg.content === "string") {
+      const matches = msg.content.matchAll(/"name":\s*"([^"]+)"/g);
+      for (const m of matches) toolCounts.set(m[1], (toolCounts.get(m[1]) || 0) + 1);
+    }
+  }
+  for (const [tool, count] of toolCounts) {
+    if (count >= 3) preferenceLearner.learnFromToolUsage(tool, count);
+  }
+
   // Check for skill opportunity in this session
   if (messages.length > 10) {
-    const toolCounts = new Map<string, number>();
-    for (const msg of messages) {
-      if (typeof msg.content === "string") {
-        const matches = msg.content.matchAll(/"name":\s*"([^"]+)"/g);
-        for (const m of matches) toolCounts.set(m[1], (toolCounts.get(m[1]) || 0) + 1);
-      }
-    }
     for (const [tool, count] of toolCounts) {
       if (count >= 5) {
         const name = skillProposalManager.generateSkillName(`${tool} workflow`, tool);
