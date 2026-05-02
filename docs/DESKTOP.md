@@ -61,3 +61,15 @@ Building from `/mnt/c` or `/mnt/d` can be slow because WSL is crossing the Windo
 ```
 
 Dev mode is usually fine from `/mnt/d`; packaging is where the slowdown is most noticeable.
+
+## Desktop Features
+
+The Electron app provides:
+
+- Native window controls (minimize, maximize, close)
+- System tray for background operation
+- Desktop notification support
+- Access to the web dashboard with full WebSocket streaming
+- Sub-agent monitor and observability tabs
+- Real-time event log for agent activity
+- Persistent session management across restarts

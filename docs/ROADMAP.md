@@ -21,7 +21,7 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 - [x] **Incremental Streaming:** Real-time text delta streaming in the UI.
 
 ## Phase 4: Ecosystem & Integration (Completed)
-- [x] **The Alchemist (Plugin System):** Dynamic tool loading from local files.
+- [x] **Plugin System (The Alchemist):** Dynamic tool loading from local files.
 - [x] **Autonomous Browser Research:** Web searching and reading capabilities.
 - [x] **Elysia Server:** High-performance API layer built with Bun.
 - [x] **Telegram Chat Gateway:** Chat-style control surface with per-chat context.
@@ -29,26 +29,29 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 - [x] **Prompt Layer System:** Composable base, profile, project, memory, skill, and task prompt layers.
 - [x] **MCP Support (Dynamic):** Fully automated MCP server discovery and lifecycle.
 - [x] **Web Dashboard:** A local web UI to complement the CLI experience.
-- [x] **Skill System v2:** File-based skills with resolver and smart retrieval
-- [x] **Knowledge Brain:** Pages, entities, relationships with hybrid search
-- [x] **Interactive Approval:** CLI approval system for high-risk actions
+- [x] **Skill System v2:** File-based skills with resolver and smart retrieval.
+- [x] **Knowledge Brain:** Pages, entities, relationships with hybrid search.
+- [x] **Interactive Approval:** CLI approval system for high-risk actions.
+- [x] **Identity and Binding System:** Central users, roles, and channel bindings.
 
-## Phase 5: OpenClaw / Hermes-Inspired Agent Runtime (Completed)
+## Phase 5: Agent Runtime (Completed)
+- [x] **Sub-Agent Runtime:** Spawn isolated child sessions for parallel research, code edits, tests. Tools: `spawn_agent`, `wait_for_agents`, `agent_status`, `list_agents`, `abort_agent`.
+- [x] **Observability Dashboard:** New "Agents" tab with sub-agent monitor, active sessions table, and real-time event log via WebSocket.
+- [x] **Trajectory Export:** Export sessions as JSON/JSONL for debugging, evaluation, and fine-tuning datasets. Tools: `export_trajectory`, `list_trajectories`, `load_trajectory`.
+- [x] **Execution Backends:** Unified execution interface for local shell, tmux, Docker, and SSH. Tools: `run_in_backend`, `list_backends`, `execution_status`, `list_executions`, `abort_execution`.
+- [x] **Audit Log:** Record commands, tool calls, policy decisions, task events, and errors with redacted secrets. Tools: `audit_query`, `audit_stats`, `audit_errors`.
+- [x] **Notification Manager:** Multi-channel notification dispatch (Telegram, webhook). Tools: `send_notification`, `notification_history`.
 
-The next stage is to make Lulu feel like a persistent personal agent instead of a set of entrypoints.
-
-- [x] **Unified Command Runtime:** Route `/status`, `/project`, `/prompt`, `/task`, `/tools`, `/memory`, `/model` through one registry across CLI, API, dashboard, and Telegram.
-- [x] **Skill Capture Loop:** Let Lulu propose reusable skills after successful workflows, with user review before activation.
-- [x] **Audit Log:** Record commands, tool calls, policy decisions, task events, and errors with redacted secrets.
-- [x] **Sub-Agent Runtime:** Run isolated child sessions for parallel research, code edits, tests, and long-running tmux jobs.
-- [x] **Execution Backends:** Support local shell, tmux, Docker, SSH, and future remote runners through the same execution interface.
-- [x] **Observability Dashboard:** Show sessions, tasks, live events, tool calls, policy blocks, and active terminals.
-- [x] **Trajectory Export:** Export sessions and tool traces for debugging, evaluation, and future fine-tuning datasets.
-
-## Phase 6: Autonomous Agent (Completed)
-
+## Phase 6: Autonomous Multi-Agent (Completed)
 - [x] **Autonomous multi-agent coordination** for large-scale refactors. Tools: `orchestrate_task`, `list_coordination_tasks`.
-- [x] **Always-on personal agent mode** with scheduled work, chat notifications, and reviewable memory growth. Tools: `always_on_status`, `configure_always_on`, `send_notification`, `notification_history`.
+- [x] **Always-on personal agent mode** with scheduled work, chat notifications, and reviewable memory growth. Tools: `always_on_status`, `configure_always_on`.
+- [x] **32 Built-in Skills** organized by category (brain, code, git, web, tasks, research, skills, setup, operational).
+- [x] **Skill Curation System:** Analyze, optimize, and merge skills automatically.
+- [x] **LSP Neovim Integration:** Language Server Protocol for code actions, explain, fix, refactor.
 
 ## Future Vision
 - Real-time pair programming integration with popular IDEs via a local server.
+- Cross-platform mobile app (iOS/Android) for remote control.
+- Fine-tuning pipeline using exported trajectories.
+- Team collaboration with shared skills and brain.
+- Cloud bridge for remote gateway access via Tailscale or similar.
