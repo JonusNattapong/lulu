@@ -1,6 +1,6 @@
 import type { RiskLevel } from "../tools/registry.js";
 
-export type Channel = "cli" | "api" | "telegram" | "dashboard" | "system";
+export type Channel = "cli" | "api" | "telegram" | "dashboard" | "subagent" | "system";
 
 export interface PermissionRequest {
   toolName: string;

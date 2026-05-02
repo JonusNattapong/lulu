@@ -6,10 +6,12 @@ import { capabilitiesSummary, detectCapabilities, formatCapabilities } from "./c
 import { describePrompt } from "./prompt.js";
 import { loadPromptBuild } from "./config.js";
 import { initSoulVault } from "./soul.js";
+import "./skill-commands.js";
+import "./audit-commands.js";
 
 export interface CommandContext {
   sessionId: string;
-  channel: "cli" | "api" | "telegram" | "dashboard";
+  channel: "cli" | "api" | "telegram" | "dashboard" | "subagent";
   config: AgentConfig;
   sessionManager: SessionManager;
 }

@@ -1,13 +1,28 @@
 import { EventEmitter } from "node:events";
 
-export type LuluEventType = 
+export type LuluEventType =
   | "session:start"
   | "agent:token"
   | "agent:thought"
   | "agent:error"
   | "tool:start"
   | "tool:end"
-  | "session:end";
+  | "session:end"
+  | "subagent:start"
+  | "subagent:token"
+  | "subagent:tool:start"
+  | "subagent:tool:end"
+  | "subagent:end"
+  | "exec:start"
+  | "exec:end"
+  | "coordination:task:created"
+  | "coordination:task:start"
+  | "coordination:task:end"
+  | "alwayson:start"
+  | "alwayson:tick"
+  | "alwayson:stop"
+  | "notification:send"
+  | "notification:sent";
 
 export interface LuluEvent {
   type: LuluEventType;

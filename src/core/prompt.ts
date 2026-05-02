@@ -101,7 +101,7 @@ export function buildSystemPrompt(options: {
     heading: `Project Memory (${options.projectName})`,
   });
 
-  appendSkillLayer(layers, env.LULU_PROMPT_QUERY || "", parseSkillLimit(env.LULU_SKILL_LIMIT));
+  appendSkillLayer(layers, env.LULU_PROMPT_QUERY || "", parseSkillLimit(env.LULU_SKILL_LIMIT), options.projectRoot);
 
   layers.push({
     name: "system-capabilities",
@@ -172,7 +172,43 @@ function appendJsonLayer(
   }
 }
 
-function appendSkillLayer(layers: PromptLayer[], query: string, limit: number): void {
+function appendSkillLayer(layers: PromptLayer[], query: string, limit: number, projectRoot: string): void {
+  // Try new skill system first
+  try {
+    const { loadAllSkills, searchSkills } = require("./skills.js");
+    const skills = loadAllSkills(projectRoot);
+
+    if (skills.length === 0) {
+      // Fallback to old skills.json
+      appendLegacySkillLayer(layers, query, limit);
+      return;
+    }
+
+    const results = searchSkills(query, skills, limit);
+    if (results.length === 0) return;
+
+    const lines = ["# Retrieved Skills", ""];
+    for (const r of results) {
+      lines.push(`## ${r.skill.name}`);
+      lines.push(`**Category:** ${r.skill.category}`);
+      lines.push(`**Triggers:** ${r.skill.triggers.join(", ")}`);
+      lines.push("");
+      lines.push(r.skill.content);
+      lines.push("");
+    }
+
+    layers.push({
+      name: "retrieved-skills",
+      source: "Skill System",
+      content: lines.join("\n"),
+    });
+  } catch {
+    // Fallback to legacy skills.json
+    appendLegacySkillLayer(layers, query, limit);
+  }
+}
+
+function appendLegacySkillLayer(layers: PromptLayer[], query: string, limit: number): void {
   const source = path.join(homedir(), ".lulu", "skills.json");
   if (!existsSync(source)) return;
   try {

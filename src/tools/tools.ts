@@ -16,6 +16,12 @@ import { mcpTools } from "./modules/mcp.js";
 import { gitTools } from "./modules/git.js";
 import { systemTools } from "./modules/system.js";
 import { schedulerTools } from "./modules/scheduler.js";
+import { skillTools } from "./modules/skill.js";
+import { curationTools } from "./modules/curation.js";
+import { subagentTools } from "./modules/subagent.js";
+import { trajectoryTools } from "./modules/trajectory.js";
+import { executionTools } from "./modules/execution.js";
+import { coordinatorTools } from "./modules/coordinator.js";
 
 // Register all tools
 [
@@ -28,7 +34,13 @@ import { schedulerTools } from "./modules/scheduler.js";
   ...mcpTools,
   ...gitTools,
   ...systemTools,
-  ...schedulerTools
+  ...schedulerTools,
+  ...skillTools,
+  ...curationTools,
+  ...subagentTools,
+  ...trajectoryTools,
+  ...executionTools,
+  ...coordinatorTools,
 ].forEach(tool => registry.register(tool));
 
 export const BUILTIN_TOOLS: ToolDef[] = registry.getToolDefs();

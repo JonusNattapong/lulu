@@ -20,32 +20,35 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 - [x] **Token & Cost Tracking:** Real-time usage and cost display.
 - [x] **Incremental Streaming:** Real-time text delta streaming in the UI.
 
-## Phase 4: Ecosystem & Integration (In Progress)
+## Phase 4: Ecosystem & Integration (Completed)
 - [x] **The Alchemist (Plugin System):** Dynamic tool loading from local files.
 - [x] **Autonomous Browser Research:** Web searching and reading capabilities.
 - [x] **Elysia Server:** High-performance API layer built with Bun.
 - [x] **Telegram Chat Gateway:** Chat-style control surface with per-chat context.
 - [x] **Central Session System:** Shared persisted sessions across CLI, API, dashboard, and Telegram.
 - [x] **Prompt Layer System:** Composable base, profile, project, memory, skill, and task prompt layers.
-- [ ] **MCP Support (Dynamic):** Fully automated MCP server discovery and lifecycle.
-- [ ] **Web Dashboard:** A local web UI to complement the CLI experience.
+- [x] **MCP Support (Dynamic):** Fully automated MCP server discovery and lifecycle.
+- [x] **Web Dashboard:** A local web UI to complement the CLI experience.
+- [x] **Skill System v2:** File-based skills with resolver and smart retrieval
+- [x] **Knowledge Brain:** Pages, entities, relationships with hybrid search
+- [x] **Interactive Approval:** CLI approval system for high-risk actions
 
-## Phase 5: OpenClaw / Hermes-Inspired Agent Runtime
+## Phase 5: OpenClaw / Hermes-Inspired Agent Runtime (Completed)
 
 The next stage is to make Lulu feel like a persistent personal agent instead of a set of entrypoints.
 
-- [ ] **Unified Command Runtime:** Route `/status`, `/project`, `/prompt`, `/task`, `/tools`, `/memory`, and `/model` through one registry across CLI, API, dashboard, and Telegram.
-- [ ] **Project Runtime:** Make the project profile the root object for prompts, sessions, memory, tasks, allowed tools, scripts, and workspace indexing.
-- [ ] **Tool Permission Matrix:** Define tool access by channel, project, user, risk level, and approval mode.
-- [ ] **Audit Log:** Record commands, tool calls, policy decisions, task events, and errors with redacted secrets.
-- [ ] **Job Scheduler:** Add recurring and delayed tasks such as daily summaries, repo health checks, and scheduled Telegram reports.
-- [ ] **Skill Capture Loop:** Let Lulu propose reusable skills after successful workflows, with user review before activation.
-- [ ] **Sub-Agent Runtime:** Run isolated child sessions for parallel research, code edits, tests, and long-running tmux jobs.
-- [ ] **Execution Backends:** Support local shell, tmux, Docker, SSH, and future remote runners through the same execution interface.
-- [ ] **Observability Dashboard:** Show sessions, tasks, live events, tool calls, policy blocks, and active terminals.
-- [ ] **Trajectory Export:** Export sessions and tool traces for debugging, evaluation, and future fine-tuning datasets.
+- [x] **Unified Command Runtime:** Route `/status`, `/project`, `/prompt`, `/task`, `/tools`, `/memory`, `/model` through one registry across CLI, API, dashboard, and Telegram.
+- [x] **Skill Capture Loop:** Let Lulu propose reusable skills after successful workflows, with user review before activation.
+- [x] **Audit Log:** Record commands, tool calls, policy decisions, task events, and errors with redacted secrets.
+- [x] **Sub-Agent Runtime:** Run isolated child sessions for parallel research, code edits, tests, and long-running tmux jobs.
+- [x] **Execution Backends:** Support local shell, tmux, Docker, SSH, and future remote runners through the same execution interface.
+- [x] **Observability Dashboard:** Show sessions, tasks, live events, tool calls, policy blocks, and active terminals.
+- [x] **Trajectory Export:** Export sessions and tool traces for debugging, evaluation, and future fine-tuning datasets.
+
+## Phase 6: Autonomous Agent (Completed)
+
+- [x] **Autonomous multi-agent coordination** for large-scale refactors. Tools: `orchestrate_task`, `list_coordination_tasks`.
+- [x] **Always-on personal agent mode** with scheduled work, chat notifications, and reviewable memory growth. Tools: `always_on_status`, `configure_always_on`, `send_notification`, `notification_history`.
 
 ## Future Vision
-- Autonomous multi-agent coordination for large-scale refactors.
 - Real-time pair programming integration with popular IDEs via a local server.
-- Always-on personal agent mode with scheduled work, chat notifications, and reviewable memory growth.

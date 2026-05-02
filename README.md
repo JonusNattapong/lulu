@@ -10,11 +10,13 @@ Lulu is designed to work inside your projects, keep project-scoped context, use 
  | |    | |  | | | |    | |  | |
  | |____| |__| | | |____| |__| |
  |______|______| |______|______|
-       v0.0.5
+       v0.0.7
 ```
 
 ## Features
 
+- **Skill System** (27 built-in skills) - File-based skills with SKILL.md format, resolver, and skill retrieval
+- **Knowledge Brain** - Vector search, entity extraction, hybrid search (keyword + graph)
 - Multi-provider model support through a provider abstraction.
 - Interactive CLI and Ink-based terminal UI.
 - Local API and websocket streaming for dashboard integrations.
@@ -29,6 +31,7 @@ Lulu is designed to work inside your projects, keep project-scoped context, use 
 - Tool registry with policy checks for filesystem, shell, tmux, web, git, task, prompt, and system tools.
 - Optional tmux tools for terminal session control.
 - MCP and plugin-oriented extension points.
+- **Curation System** - Analyze, optimize, and merge skills automatically
 
 ## Requirements
 
@@ -122,6 +125,12 @@ Common commands:
 | `/new` or `/reset` | Start a fresh session |
 | `/prompt` | Inspect active prompt layers |
 | `/exit` or `/quit` | End the interactive session |
+| `/skills` | Manage skills: list, search, show, create |
+| `/skillify` | Capture workflow as skill |
+| `/brain` | Query knowledge brain |
+| `/resolver` | Manage skill resolver rules |
+| `/curate` | Optimize skill library |
+| `/audit` | View audit logs: query, stats, errors |
 
 ### Desktop App
 
@@ -291,7 +300,41 @@ Open the `.lulu/` folder in Obsidian to edit these files as a local vault.
 
 ### Skill Retrieval
 
-Learned skills are stored in `~/.lulu/skills.json`. Lulu scores skills against the current prompt and injects only the most relevant matches into the system prompt.
+Lulu's skill system combines the best of OpenClaw and GBrain with file-based skills.
+
+**Skill Storage:**
+```text
+~/.lulu/skills/                    # Global skills
+  resolver.md                      # Skill routing rules
+  <category>/
+    <skill-name>/
+      SKILL.md                     # Skill definition
+
+<project>/skills/                  # Project-specific (higher priority)
+```
+
+**Built-in Skills (27):**
+| Category | Skills |
+|----------|--------|
+| brain | brain-ops, brain-query, meeting-notes, cross-modal-review, citation-fixer, reports |
+| code | code-review, code-refactor, code-debug, test-generator, docs-generator, security-audit, api-design, database-design |
+| git | git-commit, github-ops |
+| web | web-search |
+| tasks | daily-briefing |
+| research | data-research |
+| skills | skill-creator, skillify |
+| setup | setup, migrate |
+| operational | deploy, docker-ops, smoke-test |
+
+**Skill Commands:**
+```sh
+/skills list           # List all skills
+/skills search <query> # Search skills
+/skills show <name>    # Show skill details
+/skillify <name>        # Capture workflow as skill
+/brain query <query>    # Query knowledge brain
+/curate                 # Optimize skill library
+```
 
 Control the maximum number of injected skills with:
 

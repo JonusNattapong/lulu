@@ -5,7 +5,21 @@ All notable changes to the Lulu project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- (new changes here)
+- **Sub-Agent Runtime** - Spawn isolated child sessions for parallel research, code edits, tests. Tools: `spawn_agent`, `wait_for_agents`, `agent_status`, `list_agents`, `abort_agent`.
+- **Observability Dashboard** - New "Agents" tab with sub-agent monitor, active sessions table, and real-time event log via WebSocket.
+- **Trajectory Export** - Export sessions as JSON/JSONL for debugging, evaluation, and fine-tuning datasets. Tools: `export_trajectory`, `list_trajectories`, `load_trajectory`. API: `GET/POST /trajectories`.
+- **Execution Backends** - Unified execution interface for local shell, tmux, Docker, and SSH. Tools: `run_in_backend`, `list_backends`, `execution_status`, `list_executions`, `abort_execution`.
+- **Autonomous Multi-Agent Coordination** - Task orchestration with dependency graph resolution. Tools: `orchestrate_task`, `list_coordination_tasks`. API: `/coordinator/tasks/*`.
+- **Always-On Agent Service** - Background heartbeat loop with scheduled jobs and Telegram notifications. Tools: `always_on_status`, `configure_always_on`, `send_notification`, `notification_history`. API: `/always-on/*`.
+- **Notification Manager** - Multi-channel notification dispatch (Telegram, webhook). Dashboard "always-on" tab with real-time status and notification history.
+- **Skill System v2** - File-based skills with SKILL.md format, trigger-based resolver, and smart retrieval
+- **Knowledge Brain** - Pages, entities, relationships with hybrid search (keyword + graph + optional vector)
+- **Curation Tools** - `curate_skills`, `list_skills`, `delete_skill`, `merge_skills` for skill management
+- **Interactive Approval** - CLI approval system with y/n/a/q options for high-risk actions
+- **27 Built-in Skills** - Organized by category (brain, code, git, web, tasks, research, skills, setup, operational)
+
+### Changed
+- Updated README with comprehensive skill system documentation
 
 ## [v0.0.7] - 2026-05-01
 

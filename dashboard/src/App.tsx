@@ -12,7 +12,11 @@ import {
   Globe,
   Box,
   CheckCircle,
-  XCircle
+  XCircle,
+  Eye,
+  Layers,
+  Radio,
+  Clock
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -46,6 +50,38 @@ interface Plugin {
   description: string;
 }
 
+interface SubAgent {
+  id: string;
+  name: string;
+  status: string;
+  parentId: string;
+  prompt: string;
+  createdAt: string;
+  startedAt?: string;
+  endedAt?: string;
+  error?: string;
+}
+
+interface LiveEvent {
+  type: string;
+  payload?: any;
+  sessionId?: string;
+  timestamp: string;
+}
+
+interface SessionInfo {
+  id: string;
+  channel: string;
+  title: string;
+  projectName?: string;
+  provider?: string;
+  model?: string;
+  messages: number;
+  turnCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const App: React.FC = () => {
   const [status, setStatus] = useState<Status | null>(null);
   const [memory, setMemory] = useState('');
@@ -56,13 +92,16 @@ const App: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const [s, h, m, mc, p, c] = await Promise.all([
+      const [s, h, m, mc, p, c, sess, ao, notif] = await Promise.all([
         axios.get(`${API_BASE}/status`),
         axios.get(`${API_BASE}/history`),
         axios.get(`${API_BASE}/memory`),
         axios.get(`${API_BASE}/mcp`),
         axios.get(`${API_BASE}/plugins`),
-        axios.get(`${API_BASE}/capabilities`).catch(() => null)
+        axios.get(`${API_BASE}/capabilities`).catch(() => null),
+        axios.get(`${API_BASE}/sessions`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/always-on/status`).catch(() => ({ data: null })),
+        axios.get(`${API_BASE}/notifications/history`).catch(() => ({ data: [] })),
       ]);
       setStatus(s.data);
       setHistory(h.data);
@@ -70,6 +109,9 @@ const App: React.FC = () => {
       setMcp(mc.data);
       setPlugins(p.data);
       if (c) setCapabilities(c.data);
+      setSessions(sess.data);
+      setAlwaysOnStatus(ao.data);
+      setNotifications(notif.data || []);
     } catch (err) {
       console.error('Fetch failed', err);
     }
@@ -88,6 +130,15 @@ const App: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const [capabilities, setCapabilities] = useState<any>(null);
 
+  // --- Agents tab state ---
+  const [subAgents, setSubAgents] = useState<SubAgent[]>([]);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
+  const [eventsCollapsed, setEventsCollapsed] = useState(false);
+  const [alwaysOnStatus, setAlwaysOnStatus] = useState<any>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const MAX_EVENTS = 200;
+
   // WebSocket for real-time streaming
   useEffect(() => {
     const ws = new WebSocket(`ws://localhost:19456/ws`);
@@ -95,27 +146,91 @@ const App: React.FC = () => {
     
     ws.onmessage = (event) => {
       const { type, data } = JSON.parse(event.data);
-      
+
+      // Capture live events for the events panel
+      setLiveEvents(prev => {
+        const entry: LiveEvent = { type, payload: data, sessionId: data?.sessionId, timestamp: new Date().toISOString() };
+        return [entry, ...prev].slice(0, MAX_EVENTS);
+      });
+
       switch (type) {
         case "connected":
           console.log("WebSocket connected");
           break;
-        case "session_start":
+        case "session:start":
           setStreamSession(data.sessionId);
           setStreamText('');
           setIsLoading(true);
           break;
-        case "stream_token":
-          setStreamText(prev => prev + (data.token || ''));
+        case "agent:token":
+          setStreamText(prev => prev + (data.text || ''));
           break;
-        case "session_end":
+        case "session:end":
           setIsLoading(false);
-          // Refresh data after completion
           fetchData();
+          break;
+        case "subagent:start":
+          setSubAgents(prev => {
+            const existing = prev.find(a => a.id === data.id);
+            if (existing) return prev;
+            return [...prev, { id: data.id, name: data.name || data.id, status: 'running', parentId: '', prompt: data.prompt || '', createdAt: data.timestamp || new Date().toISOString() }];
+          });
+          break;
+        case "subagent:end":
+          setSubAgents(prev => prev.map(a =>
+            a.id === data.id
+              ? { ...a, status: data.error ? 'failed' : 'done', error: data.error }
+              : a
+          ));
+          break;
+        case "subagent:token":
+          setSubAgents(prev => prev.map(a =>
+            a.id === data.id ? { ...a } : a
+          ));
           break;
         case "error":
           setIsLoading(false);
           setStreamText(prev => prev + `\n\nError: ${data.message}`);
+          break;
+        case "tool:start":
+          setLiveEvents(prev => {
+            const entry: LiveEvent = { type: 'tool:start', payload: { name: data.name }, sessionId: data.sessionId, timestamp: new Date().toISOString() };
+            return [entry, ...prev].slice(0, MAX_EVENTS);
+          });
+          break;
+        case "tool:end":
+          setLiveEvents(prev => {
+            const entry: LiveEvent = { type: 'tool:end', payload: { name: data.name }, sessionId: data.sessionId, timestamp: new Date().toISOString() };
+            return [entry, ...prev].slice(0, MAX_EVENTS);
+          });
+          break;
+        case "alwayson:start":
+          setAlwaysOnStatus((prev: any) => ({ ...prev, running: true }));
+          break;
+        case "alwayson:stop":
+          setAlwaysOnStatus((prev: any) => ({ ...prev, running: false }));
+          break;
+        case "alwayson:tick":
+          setAlwaysOnStatus((prev: any) => ({ ...prev, lastTick: data.lastTick }));
+          setLiveEvents(prev => {
+            const entry: LiveEvent = { type: 'alwayson:tick', payload: data, timestamp: new Date().toISOString() };
+            return [entry, ...prev].slice(0, MAX_EVENTS);
+          });
+          break;
+        case "notification:sent":
+          setNotifications(prev => [{ ...data, timestamp: new Date().toISOString() }, ...prev].slice(0, 50));
+          break;
+        case "coordination:task:start":
+          setLiveEvents(prev => {
+            const entry: LiveEvent = { type: 'coordination:task:start', payload: data, sessionId: data.taskId, timestamp: new Date().toISOString() };
+            return [entry, ...prev].slice(0, MAX_EVENTS);
+          });
+          break;
+        case "coordination:task:end":
+          setLiveEvents(prev => {
+            const entry: LiveEvent = { type: 'coordination:task:end', payload: data, sessionId: data.taskId, timestamp: new Date().toISOString() };
+            return [entry, ...prev].slice(0, MAX_EVENTS);
+          });
           break;
       }
     };
@@ -158,7 +273,7 @@ const App: React.FC = () => {
           </div>
           
           <nav className="flex bg-slate-800/50 p-1 rounded-xl border border-slate-700 flex-wrap gap-1">
-            {['overview', 'chat', 'memory', 'ecosystem', 'capabilities', 'history'].map((tab) => (
+            {['overview', 'chat', 'memory', 'ecosystem', 'capabilities', 'agents', 'always-on', 'history'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -409,6 +524,188 @@ const App: React.FC = () => {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'agents' && (
+            <motion.div
+              key="agents"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-8"
+            >
+              {/* Sub-Agents Panel */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-cyan-400">
+                  <Layers size={20} /> Sub-Agents
+                  <span className="ml-2 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded-full">{subAgents.length}</span>
+                </h2>
+                {subAgents.length === 0 ? (
+                  <p className="text-slate-500 italic text-sm py-4">No active sub-agents. Spawn one from the CLI or API.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {subAgents.map(agent => (
+                      <div key={agent.id} className="p-4 bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-cyan-500/30 transition-all">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <StatusDot status={agent.status} />
+                              <span className="font-bold text-slate-100">{agent.name}</span>
+                              <span className="text-[10px] font-mono text-slate-600">{agent.id.slice(0, 20)}...</span>
+                            </div>
+                            <p className="text-xs text-slate-400 truncate max-w-md">{agent.prompt}</p>
+                            <div className="flex gap-3 mt-2 text-[10px] text-slate-500">
+                              <span className="flex items-center gap-1"><Clock size={10} />{agent.createdAt}</span>
+                              {agent.startedAt && <span>Started: {agent.startedAt}</span>}
+                              {agent.endedAt && <span>Ended: {agent.endedAt}</span>}
+                            </div>
+                            {agent.error && <p className="text-xs text-red-400 mt-2">Error: {agent.error}</p>}
+                          </div>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${
+                            agent.status === 'done' ? 'bg-green-500/10 text-green-400' :
+                            agent.status === 'failed' ? 'bg-red-500/10 text-red-400' :
+                            agent.status === 'aborted' ? 'bg-yellow-500/10 text-yellow-400' :
+                            'bg-blue-500/10 text-blue-400'
+                          }`}>{agent.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Sessions Panel */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-purple-400">
+                  <Eye size={20} /> Active Sessions
+                  <span className="ml-2 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded-full">{sessions.length}</span>
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-700">
+                        <th className="pb-3 text-left pr-4">Channel</th>
+                        <th className="pb-3 text-left pr-4">Title</th>
+                        <th className="pb-3 text-left pr-4">Model</th>
+                        <th className="pb-3 text-right pr-4">Msgs</th>
+                        <th className="pb-3 text-right pr-4">Turns</th>
+                        <th className="pb-3 text-right">Updated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessions.map(sess => (
+                        <tr key={sess.id} className="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors">
+                          <td className="py-3 pr-4"><span className="text-[10px] bg-slate-700 px-2 py-1 rounded-full text-slate-400">{sess.channel}</span></td>
+                          <td className="py-3 pr-4 text-slate-200 font-medium">{sess.title}</td>
+                          <td className="py-3 pr-4 text-slate-400 text-xs">{sess.model || sess.provider}</td>
+                          <td className="py-3 pr-4 text-right text-slate-300">{sess.messages}</td>
+                          <td className="py-3 pr-4 text-right text-slate-300">{sess.turnCount}</td>
+                          <td className="py-3 text-right text-slate-500 text-xs">{new Date(sess.updatedAt).toLocaleTimeString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {sessions.length === 0 && <p className="text-slate-500 italic text-sm py-4">No active sessions found.</p>}
+                </div>
+              </div>
+
+              {/* Live Events Feed */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold flex items-center gap-2 text-yellow-400">
+                    <Radio size={20} /> Live Events
+                    <span className="flex items-center gap-1 text-xs font-normal text-green-400">
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>live
+                    </span>
+                    <span className="ml-2 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded-full">{liveEvents.length}</span>
+                  </h2>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setLiveEvents([])}
+                      className="text-xs text-slate-500 hover:text-slate-200 transition-colors"
+                    >Clear</button>
+                    <button
+                      onClick={() => setEventsCollapsed(c => !c)}
+                      className="text-xs text-slate-500 hover:text-slate-200 transition-colors"
+                    >{eventsCollapsed ? 'Expand' : 'Collapse'}</button>
+                  </div>
+                </div>
+                <div className="bg-slate-950/60 rounded-xl border border-slate-800 max-h-[300px] overflow-y-auto">
+                  {liveEvents.map((ev, i) => (
+                    <EventRow key={i} event={ev} collapsed={eventsCollapsed} />
+                  ))}
+                  {liveEvents.length === 0 && <p className="text-slate-600 italic text-sm p-4">Waiting for events...</p>}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'always-on' && (
+            <motion.div
+              key="always-on"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-8"
+            >
+              {/* Always-On Status */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-yellow-400">
+                  <Zap size={20} /> Always-On Agent
+                  <span className={`ml-2 text-xs font-bold px-2 py-1 rounded-full ${alwaysOnStatus?.running ? 'bg-green-500/10 text-green-400' : 'bg-slate-700 text-slate-400'}`}>
+                    {alwaysOnStatus?.running ? 'RUNNING' : 'STOPPED'}
+                  </span>
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{alwaysOnStatus?.intervalMs ? `${alwaysOnStatus.intervalMs / 1000}s` : '—'}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Interval</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{alwaysOnStatus?.tasksRun ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Tasks Run</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-2xl font-bold text-white">{alwaysOnStatus?.notificationsSent ?? 0}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Notifications</div>
+                  </div>
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-center">
+                    <div className="text-lg font-bold text-white">{alwaysOnStatus?.lastTick ? new Date(alwaysOnStatus.lastTick).toLocaleTimeString() : '—'}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Last Tick</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notification History */}
+              <div className="glass rounded-3xl p-6 border border-slate-700/50">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-purple-400">
+                  <MessageSquare size={20} /> Recent Notifications
+                  <span className="ml-2 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded-full">{notifications.length}</span>
+                </h2>
+                {notifications.length === 0 ? (
+                  <p className="text-slate-500 italic text-sm py-4">No notifications sent yet.</p>
+                ) : (
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                    {notifications.map((n: any, i: number) => (
+                      <div key={i} className={`p-4 rounded-xl border text-sm ${
+                        n.priority === 'high' ? 'border-red-500/30 bg-red-500/5' :
+                        n.priority === 'medium' ? 'border-yellow-500/30 bg-yellow-500/5' :
+                        'border-slate-700 bg-slate-800/30'
+                      }`}>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="font-bold text-slate-200">{n.title}</span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${
+                            n.priority === 'high' ? 'bg-red-500/10 text-red-400' :
+                            n.priority === 'medium' ? 'bg-yellow-500/10 text-yellow-400' :
+                            'bg-slate-700 text-slate-400'
+                          }`}>{n.priority}</span>
+                        </div>
+                        <p className="text-slate-400 text-xs">{n.body?.slice(0, 200)}{n.body?.length > 200 ? '...' : ''}</p>
+                        <div className="text-[10px] text-slate-600 mt-2">{n.source} · {n.timestamp}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* WebSocket Stream & Prompt Input */}
@@ -470,5 +767,41 @@ const CapabilityCard: React.FC<{ label: string, available: boolean, detail?: str
     {detail && <div className="text-xs text-slate-400 mt-1">{detail}</div>}
   </div>
 );
+
+const StatusDot: React.FC<{ status: string }> = ({ status }) => {
+  const color = status === 'done' ? 'bg-green-500' :
+                status === 'failed' ? 'bg-red-500' :
+                status === 'aborted' ? 'bg-yellow-500' : 'bg-blue-500';
+  return <span className={`w-2 h-2 rounded-full ${color} ${status === 'running' ? 'animate-pulse' : ''}`} />;
+};
+
+const EventRow: React.FC<{ event: LiveEvent, collapsed: boolean }> = ({ event, collapsed }) => {
+  const typeColor: Record<string, string> = {
+    'session:start': 'text-blue-400',
+    'session:end': 'text-blue-400',
+    'agent:token': 'text-cyan-400',
+    'agent:error': 'text-red-400',
+    'tool:start': 'text-yellow-400',
+    'tool:end': 'text-green-400',
+    'subagent:start': 'text-purple-400',
+    'subagent:token': 'text-pink-400',
+    'subagent:tool:start': 'text-orange-400',
+    'subagent:tool:end': 'text-emerald-400',
+    'subagent:end': 'text-purple-400',
+  };
+  const color = typeColor[event.type] || 'text-slate-400';
+  const shortTs = new Date(event.timestamp).toLocaleTimeString();
+  return (
+    <div className="flex items-start gap-3 px-4 py-2 border-b border-slate-800/50 hover:bg-slate-900/30 text-xs font-mono">
+      <span className="text-slate-600 flex-shrink-0 w-20">{shortTs}</span>
+      <span className={`${color} flex-shrink-0 w-36 truncate`}>{event.type}</span>
+      {!collapsed && (
+        <pre className="text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
+          {JSON.stringify(event.payload).slice(0, 200)}
+        </pre>
+      )}
+    </div>
+  );
+};
 
 export default App;

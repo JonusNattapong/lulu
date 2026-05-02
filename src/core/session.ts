@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type { AgentConfig } from "../types/types.js";
 
-export type SessionChannel = "cli" | "api" | "telegram" | "dashboard";
+export type SessionChannel = "cli" | "api" | "telegram" | "dashboard" | "subagent";
 
 export interface SessionRecord {
   id: string;

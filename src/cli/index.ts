@@ -73,6 +73,10 @@ Interactive Commands:
   /prompt       Show active prompt layers
   /session      Show active session metadata
   /new, /reset  Start a fresh session
+  /skills       Manage skills: list, search, show, create
+  /skillify     Capture workflow as skill
+  /brain        Query knowledge brain: query, stats, ingest
+  /resolver     Manage skill resolver rules
   /exit, /quit  End the interactive session
   /help         Show this help message
 
