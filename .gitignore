@@ -2,20 +2,36 @@ node_modules/
 dist/
 coverage/
 
+# Environment and Secrets
 .env
 .env.*
 !.env.example
 
-*.log
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Databases (Local memory)
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
 
+# Build and Release
+release/
+dashboard/dist/
+*.tsbuildinfo
+.bun/
+
+# OS and IDEs
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
-.bun/
 *.local
-*.tsbuildinfo
+
+# Lulu Specific
+.lulu/
 scratch/
+
+# Soul - Keep behavior, ignore local learning
+soul/MEMORY.md
+soul/PREFERENCES.md
+soul/SESSIONS.md
+soul/metrics/
