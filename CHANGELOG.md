@@ -5,6 +5,8 @@ All notable changes to the Lulu project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Self-Evolving Skills (Reflection Loop)** - "Hermes-style" post-session reflection that automatically analyzes used skills, generates `SKILL IMPROVEMENT:` directives, bumps skill versions, and creates proactive notifications without manual approval.
+- **Ghost Worker / Sleep Learning** - Scheduled job (`sleep_learning`) that runs at 2 AM, uses LLM to discover new tech trends, queues them for autonomous research, and prepares morning proactive suggestions.
 - **Skill Improvement Loop** - Review/evaluate/improve/version existing skills with `/skills review`, `/skills evaluate`, `/skills improve`, `/skills versions` and matching skill tools.
 - **Skill Safety Layer** - Skills now carry trust levels, inferred/declared permission summaries, prompt-visible safety warnings, dry-run previews for skill creation/capture, and audit `skill_event` records for skill writes.
 

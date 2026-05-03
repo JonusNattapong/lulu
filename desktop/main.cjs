@@ -88,7 +88,17 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: isWindows ? "#0a0a0a" : "#00000000",
+    transparent: !isWindows,
+    titleBarStyle: "hiddenInset",
+    titleBarOverlay: isWindows ? {
+      color: '#0a0a0a',
+      symbolColor: '#a855f7',
+      height: 40,
+    } : false,
+    vibrancy: "under-window",
+    visualEffectState: "active",
+    backgroundMaterial: "mica",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -111,7 +121,22 @@ function createWindow() {
   }
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+    if (isWindows) {
+      mainWindow.setOpacity(0);
+      mainWindow.show();
+      let opacity = 0;
+      const fadeInterval = setInterval(() => {
+        opacity += 0.08;
+        if (opacity >= 1) {
+          clearInterval(fadeInterval);
+          mainWindow.setOpacity(1);
+        } else {
+          mainWindow.setOpacity(opacity);
+        }
+      }, 15);
+    } else {
+      mainWindow.show();
+    }
   });
 
   // Hide instead of close when clicking X

@@ -279,7 +279,7 @@ const App: React.FC = () => {
   }));
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-4 md:p-8">
+    <div className="min-h-screen bg-transparent text-slate-200 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">

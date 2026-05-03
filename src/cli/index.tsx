@@ -83,6 +83,8 @@ function startInteractive() {
         ]);
         // Update local state if session changed (e.g. /new)
         setSession(sessionManager.get(activeSession.id));
+        // Update config state in case commands like /model or /provider changed environment variables
+        setConfig(resolveCliConfig());
         return;
       }
 

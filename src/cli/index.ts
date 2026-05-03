@@ -37,12 +37,13 @@ function saveHistory(history: string[]): void {
 }
 
 function formatOutput(text: string): string {
-  // Simple syntax highlighting for code blocks
-  return text.replace(/```([\s\S]*?)```/g, (match, code) => {
-    return pc.bgBlack(pc.white(match));
-  }).replace(/\*\*(.*?)\*\*/g, (match, bold) => {
-    return pc.bold(pc.yellow(match));
-  });
+  // During streaming, we can't reliably regex parse markdown chunks without a stateful parser.
+  // Instead, we let the terminal handle it but apply a subtle dim to make it sleek.
+  // We'll apply basic color tweaks if a chunk happens to contain backticks.
+  if (text.includes('`')) {
+    return pc.cyan(text);
+  }
+  return pc.white(text);
 }
 
 async function checkCuration(config: any) {
@@ -105,8 +106,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(pc.cyan(pc.bold("\n--- LULU AI v0.0.4 ---")));
-  console.log(pc.dim("Autonomous Coding Assistant\n"));
+  console.log(pc.magenta(pc.bold(`
+    __    __  __    __  __
+   / /   / / / /   / / / /
+  / /   / / / /   / / / / 
+ / /___/ /_/ /___/ /_/ /  
+/_____/\\____/_____/\\____/  `)));
+  console.log(pc.magenta(pc.bold("                v0.0.4\n")));
+  console.log(pc.cyan("  Autonomous Developer Agent\n"));
 
   let config = loadConfig();
   if (!config) {
@@ -132,11 +139,11 @@ async function main(): Promise<void> {
   const sessionManager = new SessionManager();
   let session = sessionManager.getOrCreate({ channel: "cli", subjectId: "default", title: "Interactive CLI", config });
 
-  console.log(pc.green("Ready. Type /exit to quit."));
+  console.log(pc.dim("Ready. Type /exit to quit.\n"));
 
   try {
     while (true) {
-      const prompt = pc.bold(pc.blue("> "));
+      const prompt = pc.bold(pc.magenta("❯ "));
       const inputLine = (await rl.question(prompt)).trim();
       if (!inputLine) continue;
       if (inputLine === "/exit" || inputLine === "/quit") break;
@@ -206,7 +213,9 @@ async function main(): Promise<void> {
         continue;
       }
 
+      process.stdout.write(pc.dim("\n\n"));
       const result = await runAgent(config, inputLine, session.messages, (t) => process.stdout.write(formatOutput(t)));
+      process.stdout.write("\n\n");
       session = sessionManager.saveMessages(session.id, result.messages, config);
     }
   } finally {

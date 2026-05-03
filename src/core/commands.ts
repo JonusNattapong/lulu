@@ -67,6 +67,19 @@ export class CommandRegistry {
 
 export const commandRegistry = new CommandRegistry();
 
+commandRegistry.register({
+  name: "help",
+  description: "List all available system commands",
+  execute: async () => {
+    const commands = commandRegistry.listCommands().sort((a, b) => a.name.localeCompare(b.name));
+    const lines = ["=== Available Commands ==="];
+    for (const cmd of commands) {
+      lines.push(`  /${cmd.name.padEnd(12)} - ${cmd.description}`);
+    }
+    return { text: lines.join("\n") };
+  }
+});
+
 // Standard Commands
 commandRegistry.register({
   name: "new",
@@ -124,6 +137,42 @@ commandRegistry.register({
   execute: async () => {
     const build = loadPromptBuild();
     return { text: describePrompt(build) };
+  }
+});
+
+commandRegistry.register({
+  name: "model",
+  description: "Show or change current model (/model <name>)",
+  execute: async (args, { config }) => {
+    if (args.length === 0) {
+      return { text: `Current model: ${config.model}` };
+    }
+    const newModel = args[0];
+    process.env.LULU_MODEL = newModel;
+    return { text: `Switched to model: ${newModel}` };
+  }
+});
+
+commandRegistry.register({
+  name: "provider",
+  description: "Show or change current provider (/provider <name>)",
+  execute: async (args, { config }) => {
+    const { getAvailableProviders } = await import("./config.js");
+    const available = getAvailableProviders();
+    
+    if (args.length === 0) {
+      return { text: `Current provider: ${config.provider}\nAvailable: ${available.join(", ")}` };
+    }
+    
+    const newProvider = args[0] as any;
+    if (available.includes(newProvider)) {
+      process.env.LULU_PROVIDER = newProvider;
+      // Clear LULU_MODEL so it defaults to the new provider's default, unless explicitly set elsewhere
+      delete process.env.LULU_MODEL;
+      return { text: `Switched to provider: ${newProvider}. Default model will be used.` };
+    } else {
+      return { text: `Error: Provider '${newProvider}' is not available.\nAvailable: ${available.join(", ")}` };
+    }
   }
 });
 

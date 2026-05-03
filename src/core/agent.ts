@@ -85,7 +85,7 @@ async function reflectAndStore(config: AgentConfig, messages: MessageParam[]) {
     }
   }
 
-  if (reflection.includes("SKILL IMPROVEMENT:")) {
+  if (reflection.includes("SKILL IMPROVEMENT:") && process.env.LULU_AUTO_EVOLVE_SKILLS !== "false") {
     const improvePart = reflection.split("SKILL IMPROVEMENT:")[1]?.trim();
     if (improvePart) {
       const [skillName, ...notesArr] = improvePart.split("|");

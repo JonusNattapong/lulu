@@ -99,6 +99,7 @@
     "chokidar": "^4.0.3",
     "elysia": "^1.4.28",
     "ink": "^7.0.1",
+    "ink-select-input": "^6.2.0",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "marked": "^18.0.3",

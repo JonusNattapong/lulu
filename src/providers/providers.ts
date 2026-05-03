@@ -453,14 +453,14 @@ async function* streamOpenAICompatible(
 
 export function getBaseUrl(provider: ModelProvider): string {
   switch (provider) {
-    case "openrouter": return "https://openrouter.ai/api/v1";
-    case "deepseek": return "https://api.deepseek.com";
-    case "mistral": return "https://api.mistral.ai/v1";
-    case "openai": return "https://api.openai.com/v1";
-    case "kilocode": return "https://api.kilocode.com/v1";
-    case "opencode": return "https://api.opencode.com/v1";
-    case "cline": return "https://api.cline.ai/v1";
-    case "copilot": return "https://api.github.com/copilot/chat"; 
+    case "openrouter": return process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+    case "deepseek": return process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+    case "mistral": return process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1";
+    case "openai": return process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+    case "kilocode": return process.env.KILOCODE_BASE_URL || "https://api.kilo.ai/api/gateway";
+    case "opencode": return process.env.OPENCODE_BASE_URL || "https://api.opencode.com/v1";
+    case "cline": return process.env.CLINE_BASE_URL || "https://api.cline.ai/v1";
+    case "copilot": return process.env.COPILOT_BASE_URL || "https://api.github.com/copilot/chat"; 
     default: return "";
   }
 }
