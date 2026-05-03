@@ -6,9 +6,10 @@ import pc from "picocolors";
 import { getAvailableProviders } from "./config.js";
 import type { ModelProvider } from "../types/types.js";
 
-const CONFIG_DIR = path.join(homedir(), ".lulu");
-const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
-const TELEGRAM_CONFIG_PATH = path.join(CONFIG_DIR, "telegram.json");
+import { CONFIG_FILE, LULU_DIR, TELEGRAM_CONFIG } from "./paths.js";
+
+const CONFIG_PATH = CONFIG_FILE;
+const TELEGRAM_CONFIG_PATH = TELEGRAM_CONFIG;
 
 interface OnboardingAnswers {
   provider: ModelProvider;
@@ -123,8 +124,8 @@ export async function runOnboarding(): Promise<OnboardingAnswers> {
 
 async function saveOnboardingConfig(answers: OnboardingAnswers): Promise<void> {
   // Ensure config directory exists
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
+  if (!existsSync(LULU_DIR)) {
+    mkdirSync(LULU_DIR, { recursive: true });
   }
 
   // Load existing config
@@ -180,7 +181,7 @@ async function runHealthCheck(answers: OnboardingAnswers): Promise<void> {
   console.log(`  ${configLoaded ? "✓" : "✗"} Config file readable`);
 
   // Check project directory
-  const projectDir = path.join(CONFIG_DIR, "projects", answers.projectName);
+  const projectDir = path.join(LULU_DIR, "projects", answers.projectName);
   if (!existsSync(projectDir)) {
     mkdirSync(projectDir, { recursive: true });
     // Create default memory file
@@ -206,7 +207,7 @@ async function quickSetup(): Promise<void> {
     return;
   }
 
-  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+  if (!existsSync(LULU_DIR)) mkdirSync(LULU_DIR, { recursive: true });
 
   const telegramConfig = {
     botToken: token.trim(),

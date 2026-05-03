@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lulu Documentation</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Top Navigation -->
+    <header class="top-nav">
+        <div class="nav-left">
+            <div class="logo">
+                <span class="logo-icon">🤖</span>
+                <span class="logo-text">Lulu</span>
+            </div>
+            <div class="language-selector">🌐 English <span>▼</span></div>
+        </div>
+        
+        <div class="nav-center">
+            <div class="search-bar">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="Search...">
+                <span class="search-shortcut">Ctrl K</span>
+            </div>
+        </div>
+        
+        <div class="nav-right">
+            <a href="https://github.com/JonusNattapong/lulu" class="nav-icon">🐙 GitHub</a>
+            <a href="#" class="nav-icon">📦 Releases</a>
+            <a href="#" class="nav-icon">💬 Discord</a>
+        </div>
+    </header>
+
+    <!-- Sub Navigation -->
+    <div class="sub-nav">
+        <div class="sub-nav-links">
+            <a href="#" class="active">Get started</a>
+            <a href="#">Architecture</a>
+            <a href="#">Core Systems</a>
+            <a href="#">Providers</a>
+            <a href="#">Tools</a>
+            <a href="#">Reference</a>
+        </div>
+    </div>
+
+    <div class="app-layout">
+        <!-- Left Sidebar (Navigation) -->
+        <aside class="left-sidebar">
+            <nav id="sidebarNav"></nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="breadcrumb" id="breadcrumbs"></div>
+            <div id="contentWrapper" class="markdown-body">
+                <!-- Content injected here -->
+            </div>
+        </main>
+
+        <!-- Right Sidebar (Table of Contents) -->
+        <aside class="right-sidebar">
+            <div class="toc-header">≡ On this page</div>
+            <nav id="tocNav" class="toc-nav">
+                <!-- TOC injected here -->
+            </nav>
+        </aside>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

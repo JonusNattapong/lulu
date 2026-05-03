@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
 import path from "path";
 import { registry } from "./registry.js";
+import { policyEngine } from "../core/policy.js";
 import { redact, redactObject } from "../core/secrets.js";
 
 // Import modules
@@ -85,6 +86,15 @@ export async function loadPlugins(): Promise<void> {
   }
 }
 
+export function syncPreferencesToGlobalSoul(profile: { preferences: Array<{ key: string; value: string }> }): void {
+  const lines = ["# PREFERENCES\n\nLearned user preferences synced from Lulu.\n"];
+  for (const p of profile.preferences.slice(-30)) {
+    lines.push(`- **${redact(p.key)}**: ${redact(p.value)}`);
+  }
+  // @ts-ignore
+  writeGlobalSoulFile("PREFERENCES.md", lines.join("\n"));
+}
+
 export function getPluginTools(): ToolDef[] {
   return Array.from(PLUGINS.values()).map(p => ({
     name: p.name,
@@ -101,6 +111,18 @@ export async function executeTool(call: ToolCall, config: AgentConfig): Promise<
   const plugin = PLUGINS.get(call.name);
   if (plugin) {
     try {
+      // Security Check for Plugins
+      const policy = policyEngine.checkPermission({
+        toolName: plugin.name,
+        risk: "medium", // Assume medium risk for unknown plugins
+        channel: config.channel || "cli",
+        input: call.input
+      });
+
+      if (!policy.allowed) {
+        return { tool_use_id: call.id, content: `Access Denied for Plugin: ${policy.reason}`, is_error: true };
+      }
+
       const result = await plugin.execute(call.input, config);
       return { tool_use_id: call.id, content: redact(result) };
     } catch (err: any) {

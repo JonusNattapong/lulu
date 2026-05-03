@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
+import { LULU_DIR } from "./paths.js";
 
 export interface SoulFile {
   name: string;
@@ -199,7 +199,7 @@ export function initSoulVault(projectRoot: string): string[] {
 // ── Global SOUL ───────────────────────────────────────────────────────────────
 
 export function getGlobalSoulDir(): string {
-  return path.join(homedir(), ".lulu", "soul");
+  return path.join(LULU_DIR, "soul");
 }
 
 export function listGlobalSoulFiles(): SoulFileMeta[] {
@@ -276,10 +276,12 @@ export function initGlobalSoulVault(): string[] {
   return written;
 }
 
+import { redact } from "./secrets.js";
+
 export function syncPreferencesToGlobalSoul(profile: { preferences: Array<{ key: string; value: string }> }): void {
   const lines = ["# PREFERENCES\n\nLearned user preferences synced from Lulu.\n"];
   for (const p of profile.preferences.slice(-30)) {
-    lines.push(`- **${p.key}**: ${p.value}`);
+    lines.push(`- **${redact(p.key)}**: ${redact(p.value)}`);
   }
   writeGlobalSoulFile("PREFERENCES.md", lines.join("\n"));
 }

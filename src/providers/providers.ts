@@ -90,6 +90,7 @@ export async function* sendToProviderStream(
     case "openrouter":
     case "deepseek":
     case "mistral":
+    case "google":
     case "openai":
     case "kilocode":
     case "opencode":
@@ -113,6 +114,7 @@ export async function sendToProvider(
     case "openrouter":
     case "deepseek":
     case "mistral":
+    case "google":
     case "openai":
     case "kilocode":
     case "opencode":
@@ -457,6 +459,7 @@ export function getBaseUrl(provider: ModelProvider): string {
     case "deepseek": return process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
     case "mistral": return process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1";
     case "openai": return process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+    case "google": return process.env.GOOGLE_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai";
     case "kilocode": return process.env.KILOCODE_BASE_URL || "https://api.kilo.ai/api/gateway";
     case "opencode": return process.env.OPENCODE_BASE_URL || "https://api.opencode.com/v1";
     case "cline": return process.env.CLINE_BASE_URL || "https://api.cline.ai/v1";

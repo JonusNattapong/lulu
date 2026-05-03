@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { SchedulerManager } from "./scheduler.js";
@@ -7,7 +7,9 @@ import { loadConfig } from "./config.js";
 import { eventBus } from "./events.js";
 import type { AlwaysOnConfig, AlwaysOnStatus } from "../types/types.js";
 
-const CONFIG_PATH = path.join(homedir(), ".lulu", "alwayson.json");
+import { ALWAYS_ON_CONFIG, LULU_DIR, getProjectMemoryDb } from "./paths.js";
+
+const CONFIG_PATH = ALWAYS_ON_CONFIG;
 const DEFAULT_CONFIG: AlwaysOnConfig = {
   enabled: false,
   intervalMs: 60_000,
@@ -162,18 +164,18 @@ class AlwaysOnService {
     if (!config?.projectName) return;
 
     // Check memory file size directly
-    const memoryPath = path.join(homedir(), ".lulu", "projects", config.projectName, "memory.db");
+    const memoryPath = getProjectMemoryDb(config.projectName);
     const today = new Date().toISOString().split("T")[0];
     const todayKey = `review_${today}`;
 
     // Only run once per day
-    const lastReviewPath = path.join(homedir(), ".lulu", `memory_review_${config.projectName}.txt`);
+    const lastReviewPath = path.join(LULU_DIR, `memory_review_${config.projectName}.txt`);
     if (existsSync(lastReviewPath)) {
       const lastReview = readFileSync(lastReviewPath, "utf-8").trim();
       if (lastReview === todayKey) return;
     }
 
-    const size = existsSync(memoryPath) ? readFileSync(memoryPath, "utf-8").length : 0;
+    const size = existsSync(memoryPath) ? statSync(memoryPath).size : 0;
     if (size > 1024 && this.config.notifications.telegram) {
       this.notificationsSent++;
       writeFileSync(lastReviewPath, todayKey);

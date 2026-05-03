@@ -1,8 +1,8 @@
 import type { ToolCall, ToolResult, AgentConfig, ToolDef } from "../types/types.js";
 import { policyEngine } from "../core/policy.js";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { homedir } from "node:os";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { APPROVAL_CONFIG } from "../core/paths.js";
 import readline from "node:readline/promises";
 
 export type RiskLevel = "low" | "medium" | "high";
@@ -44,7 +44,7 @@ class ToolRegistry {
   }
 
   private loadApprovalConfig(): ApprovalConfig {
-    const configPath = path.join(homedir(), ".lulu", "approval-config.json");
+    const configPath = APPROVAL_CONFIG;
     const defaults: ApprovalConfig = {
       enabled: true,
       autoApproveLowRisk: true,
@@ -66,10 +66,9 @@ class ToolRegistry {
   }
 
   private saveApprovalConfig(): void {
-    const configPath = path.join(homedir(), ".lulu", "approval-config.json");
+    const configPath = APPROVAL_CONFIG;
     const dir = path.dirname(configPath);
     if (!existsSync(dir)) {
-      const { mkdirSync } = require("node:fs");
       mkdirSync(dir, { recursive: true });
     }
     writeFileSync(configPath, JSON.stringify(this.config, null, 2));

@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { eventBus } from "./events.js";
+import { TELEGRAM_CONFIG, CONFIG_FILE } from "./paths.js";
 import type { NotificationPayload } from "../types/types.js";
 
 function loadTelegramCreds(): { botToken?: string; chatId?: string } | null {
-  const credPath = path.join(homedir(), ".lulu", "telegram.json");
+  const credPath = TELEGRAM_CONFIG;
   if (!existsSync(credPath)) return null;
   try {
     const cred = JSON.parse(readFileSync(credPath, "utf-8"));
@@ -19,7 +19,7 @@ function loadTelegramCreds(): { botToken?: string; chatId?: string } | null {
 }
 
 function loadWebhookUrl(): string | null {
-  const cfgPath = path.join(homedir(), ".lulu", "config.json");
+  const cfgPath = CONFIG_FILE;
   if (!existsSync(cfgPath)) return null;
   try {
     const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));

@@ -4,6 +4,8 @@ import { runMorningTest } from "../jobs/morning_test.js";
 import { runRepoHealth } from "../jobs/repo_health.js";
 import { runTelegramReport } from "../jobs/telegram_report.js";
 import { runSleepLearning } from "../jobs/sleep_learning.js";
+import { compactProjectMemory } from "./memory-compaction.js";
+import { loadConfig } from "./config.js";
 
 export type JobRunner = (job: ScheduledJob) => Promise<string>;
 
@@ -17,6 +19,12 @@ export const jobRunners: Record<string, JobRunner> = {
   "jobs/morning_test": async () => runMorningTest(process.cwd()),
   "jobs/telegram_report": async () => runTelegramReport(process.cwd()),
   "jobs/sleep_learning": async () => runSleepLearning(process.cwd()),
+  "core/memory_compaction": async () => {
+    const config = loadConfig(process.env);
+    if (!config) return "Skipped: No config available";
+    await compactProjectMemory(config.projectName || "default", config);
+    return "Memory compaction completed";
+  }
 };
 
 export function getJobRunner(job: ScheduledJob): JobRunner | null {

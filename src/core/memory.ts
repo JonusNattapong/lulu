@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import * as sqliteVec from "sqlite-vec";
 import path from "node:path";
-import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";
+import { getProjectDir, getProjectMemoryDb } from "./paths.js";
 import { getEmbedding } from "../providers/providers.js";
 import type { AgentConfig } from "../types/types.js";
 
@@ -15,11 +15,11 @@ export class MemoryManager {
   private db: Database;
 
   constructor(projectName: string) {
-    const projectDir = path.join(homedir(), ".lulu", "projects", projectName);
+    const projectDir = getProjectDir(projectName);
     if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
 
     // Use separate DB for memory to avoid conflict with brain.db (used by TaskManager)
-    const dbPath = path.join(projectDir, "memory.db");
+    const dbPath = getProjectMemoryDb(projectName);
     this.db = new Database(dbPath);
 
     // Try loading sqlite-vec extension but continue without it if unavailable
@@ -40,6 +40,7 @@ export class MemoryManager {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         content TEXT NOT NULL,
         metadata TEXT,
+        is_compacted INTEGER DEFAULT 0,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -134,6 +135,20 @@ export class MemoryManager {
       content: r.row.content,
       metadata: r.row.metadata
     }));
+  }
+
+  getUncompactedMemories(limit: number = 50): any[] {
+    return this.db.prepare(
+      "SELECT * FROM memories WHERE is_compacted = 0 ORDER BY timestamp ASC LIMIT ?"
+    ).all(limit);
+  }
+
+  markAsCompacted(ids: number[]) {
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => "?").join(",");
+    this.db.prepare(
+      `UPDATE memories SET is_compacted = 1 WHERE id IN (${placeholders})`
+    ).run(...ids);
   }
 
   close() {

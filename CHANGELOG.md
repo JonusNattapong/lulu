@@ -5,16 +5,26 @@ All notable changes to the Lulu project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Self-Evolving Skills (Reflection Loop)** - "Hermes-style" post-session reflection that automatically analyzes used skills, generates `SKILL IMPROVEMENT:` directives, bumps skill versions, and creates proactive notifications without manual approval.
-- **Ghost Worker / Sleep Learning** - Scheduled job (`sleep_learning`) that runs at 2 AM, uses LLM to discover new tech trends, queues them for autonomous research, and prepares morning proactive suggestions.
-- **Skill Improvement Loop** - Review/evaluate/improve/version existing skills with `/skills review`, `/skills evaluate`, `/skills improve`, `/skills versions` and matching skill tools.
-- **Skill Safety Layer** - Skills now carry trust levels, inferred/declared permission summaries, prompt-visible safety warnings, dry-run previews for skill creation/capture, and audit `skill_event` records for skill writes.
+
+- **Layered Memory (Compaction)** - Autonomous memory compaction system that summarizes raw session memories into stable facts in `soul/MEMORY.md` to optimize context window usage.
+- **Cybersecurity Hardening** - Multi-layered security protocols:
+  - API server restricted to `localhost` with mandatory Token-based authentication (`LULU_API_TOKEN`).
+  - Enhanced `SecurityManager` with advanced regex for detecting obfuscated commands (Python, Perl, Base64) and prompt injection heuristics.
+  - Mandatory policy and approval checks integrated for both built-in tools and external plugins.
+  - Automated PII/Secret redaction for learned preferences and memory syncing.
+- **Infrastructure Observability** - Integrated session-end metrics (turns, tool calls, errors, costs) into the self-reflection loop for better diagnostic tracking.
+- **Reliability Testing** - Comprehensive unit test suite for security protocols and centralized path management using Bun's test runner.
 
 ### Changed
+
+- **Centralized Path Management** - Standardized filesystem access via `src/core/paths.ts`, eliminating hardcoded paths and ensuring cross-platform configuration stability.
+- **Active SOUL Integration** - Agent now dynamically injects behavior-defining Markdown files (`IDENTITY.md`, `SHIELD.md`, etc.) into every session, making the "Soul" of the agent truly operational.
+- **Memory Growth Monitoring** - `AlwaysOnService` now monitors actual SQLite database file size for more accurate memory growth notifications.
 
 ## [v0.0.8] - 2026-05-02
 
 ### Added
+
 - **Personal AI Agent** - Persistent daemon with always-on context, learning, proactive behavior, and skill proposals.
 - **Personal Agent Daemon** - `bun run daemon:start`, `/daemon`, daemon PID management. Commands: `/daemon`, `/proposals`, `/preferences`, `/suggestions`, `/learn`, `/memory`, `/queue`, `/research`.
 - **User Profile System** - Persistent user preferences, learnings, skill proposals in `~/.lulu/user-profile.json`.
@@ -34,6 +44,7 @@ All notable changes to the Lulu project will be documented in this file.
 ## [v0.0.7] - 2026-05-01
 
 ### Added
+
 - **Edit Command:** Added `/edit` command for batch file editing with AI-suggested changes.
 - **Message History Navigation:** Reverse chronological message history with keyboard navigation in the terminal UI.
 - **Status Bar:** Real-time status bar showing model, provider, and session info in the terminal UI.
@@ -45,18 +56,20 @@ All notable changes to the Lulu project will be documented in this file.
 - **Heartbeat Runner:** Added `heartbeat` and `heartbeat:once` scripts for recurring scheduler jobs.
 
 ### Changed
-- Improved README with a more professional technical overview.
 
+- Improved README with a more professional technical overview.
 
 ## [v0.0.6] - 2026-05-02
 
 ### Added
+
 - **The Strong Brain (Local Intelligence):** Integrated Transformers.js for local model inference and SQLite-vec for semantic search — fully offline AI capabilities.
 - **Markdown & Syntax Highlighting:** Enhanced terminal rendering with markdown support and syntax-highlighted code blocks.
 
 ## [v0.0.5] - 2026-05-01
 
 ### Added
+
 - **Plugin System (The Alchemist):** Users can now extend Lulu by dropping JavaScript files into `~/.lulu/plugins/`. Tools are loaded dynamically at startup.
 - **Web Dashboard:** A modern local web interface (React + Tailwind) to visualize project memory, MCP servers, and conversation history. Accessible via `/dashboard`.
 - **Dynamic MCP Support:** Expanded MCP server discovery (including Claude Desktop) and dynamic lifecycle management via CLI tools.
@@ -64,11 +77,13 @@ All notable changes to the Lulu project will be documented in this file.
 - **HTML to Markdown:** Integrated `turndown` for clean web content extraction.
 
 ### Changed
+
 - API server now exposes sessions, prompt metadata, capabilities, command handling, websocket events, and redacted event payloads.
 
 ## [v0.0.4] - 2026-05-01
 
 ### Added
+
 - **Async Tool Engine:** Upgraded the tool engine to support asynchronous operations.
 - **MCP Core:** Initial integration with Model Context Protocol (MCP) servers (Stdio & HTTP).
 - **Terminal UI v2:** Rebuilt the CLI using React + Ink for a modern, component-driven experience with ASCII art logo.
@@ -80,6 +95,7 @@ All notable changes to the Lulu project will be documented in this file.
 ## [v0.0.3] - 2026-05-01
 
 ### Added
+
 - **Skill Library Manager (The Curator):** Tools for managing and consolidating the global skill library.
 - **Elysia API Server:** High-performance API layer built with Bun.
 - **Global Storage:** Moved configuration and history to `~/.lulu/`.
@@ -87,9 +103,11 @@ All notable changes to the Lulu project will be documented in this file.
 ## [v0.0.2] - 2026-04-30
 
 ### Changed
+
 - Updated project configuration and documentation.
 
 ## [v0.0.1] - 2026-04-29
 
 ### Added
+
 - Initial project setup with TypeScript source.

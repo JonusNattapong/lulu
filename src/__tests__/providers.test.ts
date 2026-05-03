@@ -46,7 +46,7 @@ describe("getBaseUrl", () => {
   });
 
   it("should return correct base URL for kilocode", () => {
-    expect(getBaseUrl("kilocode")).toBe("https://api.kilocode.com/v1");
+    expect(getBaseUrl("kilocode")).toBe("https://api.kilo.ai/api/gateway");
   });
 
   it("should return correct base URL for opencode", () => {

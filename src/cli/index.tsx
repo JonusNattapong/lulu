@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import React, { useState, useCallback, useEffect } from 'react';
 import { render, useApp } from 'ink';
 import open from 'open';
@@ -11,29 +12,46 @@ import { commandRegistry } from '../core/commands.js';
 import { detectCapabilities, formatCapabilities } from '../core/capabilities.js';
 import { runAgent } from '../core/agent.js';
 import { loadPromptBuild } from '../core/config.js';
+import { startServer, stopServer } from '../api/server.js';
+import { runOnboarding } from '../core/onboarding.js';
+import { DEFAULT_API_URL } from '../core/constants.js';
+import { validateEnv } from '../core/env.js';
+import { logger } from '../core/logger.js';
 
-// One-shot mode: no Ink, just plain text output
-const args = process.argv.slice(2);
-const initialPrompt = args.join(' ').trim();
+async function main() {
+  validateEnv();
+  const args = process.argv.slice(2);
+  const initialPrompt = args.join(' ').trim();
 
-if (initialPrompt) {
-  const config = resolveCliConfig(initialPrompt);
-  if (!config.apiKey) {
-    console.error("No API key found. Run 'lulu' without arguments to set up.");
-    process.exit(1);
-  }
-  runAgent(config, initialPrompt, [], (t) => process.stdout.write(t))
-    .then(() => {
+  if (initialPrompt) {
+    const config = resolveCliConfig(initialPrompt);
+    if (!config || !config.apiKey) {
+      console.error("No API key found. Run 'lulu' without arguments to set up.");
+      process.exit(1);
+    }
+    try {
+      await runAgent(config, initialPrompt, [], (t) => process.stdout.write(t));
       process.stdout.write("\n");
       process.exit(0);
-    })
-    .catch((err) => {
-      console.error(err instanceof Error ? err.message : String(err));
+    } catch (err: any) {
+      console.error(err.message || String(err));
       process.exit(1);
-    });
-} else {
-  startInteractive();
+    }
+  } else {
+    let config = resolveCliConfig();
+    if (!config || !config.apiKey) {
+      await runOnboarding();
+      config = resolveCliConfig();
+      if (!config || !config.apiKey) {
+        console.error("Error: Failed to load configuration after onboarding.");
+        process.exit(1);
+      }
+    }
+    startInteractive();
+  }
 }
+
+main().catch(console.error);
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -90,7 +108,7 @@ function startInteractive() {
 
       // Legacy/Special CLI Commands (Dashboard, Edit)
       if (text === '/dashboard') {
-        open('http://localhost:19456');
+        open(DEFAULT_API_URL);
         setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'system', content: 'Opening dashboard...' }]);
         return;
       }
@@ -166,7 +184,13 @@ function startInteractive() {
     );
   };
 
-  render(<LuluLauncher />);
+  startServer();
+  const { waitUntilExit } = render(<LuluLauncher />);
+  waitUntilExit().then(() => {
+    stopServer();
+  }).catch(() => {
+    stopServer();
+  });
 }
 
 function resolveCliConfig(prompt?: string) {

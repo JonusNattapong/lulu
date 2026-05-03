@@ -12,8 +12,8 @@ import { BUILTIN_TOOLS, executeTool, loadPlugins, getPluginTools } from "../tool
 import { loadMCPServers, getMCPTools, callMCPTool, closeAllMCP } from "./mcp.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
 import { appendFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
+import { HISTORY_FILE } from "./paths.js";
 import pc from "picocolors";
 import { MemoryManager } from "./memory.js";
 import { redact } from "./secrets.js";
@@ -25,6 +25,8 @@ import { globalMemory } from "./global-memory.js";
 import { preferenceLearner } from "./preferences.js";
 import { selfReflection } from "./self-reflection.js";
 import { improveSkill } from "./skill-improvement.js";
+import { logger } from "./logger.js";
+import { readSoulFiles, readGlobalSoulFiles } from "./soul.js";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_HISTORY_MESSAGES = 12;
@@ -106,10 +108,10 @@ async function reflectAndStore(config: AgentConfig, messages: MessageParam[]) {
               context: `skill:${result.skillName}`,
               priority: "high",
             });
-            console.log(`[Agent] Skill auto-evolved: ${result.skillName} (v${result.newVersion})`);
+            logger.info(`Skill auto-evolved: ${result.skillName} (v${result.newVersion})`);
           }
         } catch (e) {
-          console.error("[Reflection] Auto-improve failed:", e);
+          logger.error("Auto-improve failed", e);
         }
       }
     }
@@ -146,6 +148,22 @@ export async function runAgent(
   // Build global memory context
   const globalContext = globalMemory.buildContext();
 
+  // Build SOUL context
+  const projectRoot = process.cwd();
+  const localSoul = readSoulFiles(projectRoot);
+  const globalSoul = readGlobalSoulFiles();
+  let soulContext = "";
+  if (localSoul.length > 0 || globalSoul.length > 0) {
+    soulContext = "\n\n=== SOUL & IDENTITY ===\n";
+    if (globalSoul.length > 0) {
+      soulContext += "\n[Global Rules]:\n" + globalSoul.map(f => `## ${f.name}\n${f.content}`).join("\n\n");
+    }
+    if (localSoul.length > 0) {
+      soulContext += "\n\n[Project-Specific Identity]:\n" + localSoul.map(f => `## ${f.name}\n${f.content}`).join("\n\n");
+    }
+    soulContext += "\n========================\n";
+  }
+
   // 1. Initial Memory Search
   const memoryManager = new MemoryManager(config.projectName || "default");
   let memoryContext = "";
@@ -155,13 +173,13 @@ export async function runAgent(
       memoryContext = `\n[Relevant Project Memory]:\n${relevantMemories.map(m => `- ${m.content}`).join("\n")}`;
     }
   } catch (err) {
-    console.error("[Memory] Search failed at startup:", err);
+    logger.error("Memory search failed at startup", err);
   }
 
-  // Update system prompt with memory, proactive context, and global context
+  // Update system prompt with memory, proactive context, global context, and SOUL
   const sessionConfig = {
     ...config,
-    systemPrompt: config.systemPrompt + memoryContext + (proactiveContext ? `\n${proactiveContext}` : "") + (globalContext ? `\n${globalContext}` : "")
+    systemPrompt: config.systemPrompt + soulContext + memoryContext + (proactiveContext ? `\n${proactiveContext}` : "") + (globalContext ? `\n${globalContext}` : "")
   };
 
   await loadPlugins();
@@ -175,6 +193,11 @@ export async function runAgent(
   ];
 
   let messages: MessageParam[] = [...history];
+  const startTime = Date.now();
+  let totalTurns = 0;
+  let totalErrors = 0;
+  let totalToolCalls = 0;
+
   if (messages.length > MAX_HISTORY_MESSAGES) {
     const summaryMessage = await summarizeHistory(sessionConfig, messages);
     messages = [summaryMessage];
@@ -187,26 +210,34 @@ export async function runAgent(
 
   while (rounds < MAX_TOOL_ROUNDS) {
     rounds++;
+    totalTurns++;
     let fullText = "";
     let toolCalls: any[] = [];
     let usage: Usage | undefined;
 
-    const stream = sendToProviderStream(sessionConfig, messages, tools);
+    try {
+      const stream = sendToProviderStream(sessionConfig, messages, tools);
 
-    for await (const event of stream) {
-      if (event.type === "text_delta") {
-        fullText += event.text;
-        if (onToken) onToken(event.text || "");
-        eventBus.emit("agent:token", { text: event.text }, sessionId);
-      } else if (event.type === "tool_use") {
-        toolCalls = event.toolCalls || [];
-      } else if (event.type === "usage" && event.usage) {
-        usage = event.usage;
-        totalUsage.inputTokens += usage.inputTokens;
-        totalUsage.outputTokens += usage.outputTokens;
-        totalUsage.totalTokens += usage.totalTokens;
-        totalUsage.costEstimate += usage.costEstimate;
+      for await (const event of stream) {
+        if (event.type === "text_delta") {
+          fullText += event.text;
+          if (onToken) onToken(event.text || "");
+          eventBus.emit("agent:token", { text: event.text }, sessionId);
+        } else if (event.type === "tool_use") {
+          toolCalls = event.toolCalls || [];
+          totalToolCalls += toolCalls.length;
+        } else if (event.type === "usage" && event.usage) {
+          usage = event.usage;
+          totalUsage.inputTokens += usage.inputTokens;
+          totalUsage.outputTokens += usage.outputTokens;
+          totalUsage.totalTokens += usage.totalTokens;
+          totalUsage.costEstimate += usage.costEstimate;
+        }
       }
+    } catch (err) {
+      logger.error("Stream failed in agent loop", err);
+      totalErrors++;
+      break;
     }
 
     messages.push({ role: "assistant", content: fullText || "Thinking..." });
@@ -217,11 +248,17 @@ export async function runAgent(
     for (const call of toolCalls) {
       eventBus.emit("tool:start", { name: call.name, input: call.input }, sessionId);
       let result: ToolResult;
-      if (call.name.startsWith("mcp_")) {
-        result = await callMCPTool(call.name, call.input);
-        result = { ...result, tool_use_id: call.id };
-      } else {
-        result = await executeTool(call, sessionConfig);
+      try {
+        if (call.name.startsWith("mcp_")) {
+          result = await callMCPTool(call.name, call.input);
+          result = { ...result, tool_use_id: call.id };
+        } else {
+          result = await executeTool(call, sessionConfig);
+        }
+      } catch (err) {
+        logger.error(`Tool execution failed: ${call.name}`, err);
+        totalErrors++;
+        result = { tool_use_id: call.id, content: `Error: ${err}` };
       }
       results.push(result);
       eventBus.emit("tool:end", { name: call.name, result }, sessionId);
@@ -230,7 +267,15 @@ export async function runAgent(
     messages.push(toolResultToClaudeMessage(results));
   }
 
-  // After session, reflect, store, and detect patterns
+  // After session, record metrics, reflect, store, and detect patterns
+  selfReflection.recordSession({
+    turns: totalTurns,
+    toolCalls: totalToolCalls,
+    errors: totalErrors,
+    timeMs: Date.now() - startTime,
+    completed: totalErrors === 0,
+  });
+
   await reflectAndStore(sessionConfig, messages);
   proactiveEngine.recordPattern(`session:${config.projectName || "default"}`);
 
@@ -266,13 +311,13 @@ export async function runAgent(
           steps: `Automated workflow using ${tool} tool.`,
         });
         proactiveEngine.recordPattern(`skill:${tool}`);
-        console.log(`[Agent] Skill proposal created: ${name} (ID: ${id})`);
+        logger.info(`Skill proposal created: ${name} (ID: ${id})`);
       }
     }
   }
   
   // Log session to history
-  const logPath = path.join(homedir(), ".lulu", "history.jsonl");
+  const logPath = HISTORY_FILE;
   const logEntry = {
     timestamp: new Date().toISOString(),
     projectName: config.projectName,

@@ -14,6 +14,7 @@ import { describePrompt } from "../core/prompt.js";
 import { eventBus } from "../core/events.js";
 import { redactObject } from "../core/secrets.js";
 import { gateway } from "../core/gateway.js";
+import { DEFAULT_API_PORT, DEFAULT_API_HOST } from "../core/constants.js";
 import { exportTrajectory, saveExportToFile, listExportedTrajectories, loadTrajectoryFile } from "../core/trajectory.js";
 import { coordinatorManager } from "../core/coordinator.js";
 import { alwaysOnService } from "../core/alwayson.js";
@@ -40,20 +41,22 @@ eventBus.onAny((event) => {
   broadcast(event.type, event.payload, event.sessionId);
 });
 
-const app = new Elysia()
-  .use(cors())
-  .use(swagger())
-  .onBeforeHandle(({ request, set }) => {
-    const apiKey = process.env.LULU_API_KEY;
-    if (apiKey) {
-      const auth = request.headers.get("Authorization");
-      if (!auth || auth !== `Bearer ${apiKey}`) {
+export function createServer() {
+  return new Elysia()
+    .use(cors())
+    .derive(({ headers, set }) => {
+      const apiToken = process.env.LULU_API_TOKEN;
+      if (!apiToken) return {}; 
+      
+      const auth = headers['x-lulu-token'] || headers['authorization']?.replace('Bearer ', '');
+      if (auth !== apiToken) {
         set.status = 401;
-        return { error: "Unauthorized: Invalid or missing API Key" };
+        throw new Error("Unauthorized: Invalid or missing API Token");
       }
-    }
-  })
-  .use(staticPlugin({ assets: "dashboard/dist", prefix: "/" }))
+      return {};
+    })
+    .get("/", () => "Lulu API Server is running")
+    .use(staticPlugin({ assets: "dashboard/dist", prefix: "/dashboard" }))
   .get("/capabilities", async () => {
     try {
       const { detectCapabilities } = await import('../utils/capabilities.js')
@@ -469,7 +472,26 @@ const app = new Elysia()
       const { isWatcherRunning } = require("../core/workspace_indexer.js");
       return { watching: isWatcherRunning() };
     } catch { return { watching: false }; }
-  })
-  .listen(19456);
+  });
+}
 
-console.log(`🦊 Elysia is running at http://localhost:19456 (WebSocket: ws://localhost:19456/ws)`);
+let activeServer: any = null;
+
+export function startServer(port = DEFAULT_API_PORT) {
+  if (activeServer) return activeServer;
+  activeServer = (createServer() as any).listen({ port, hostname: DEFAULT_API_HOST });
+  console.log(`🦊 Elysia API Server is running at http://${DEFAULT_API_HOST}:${port} (WebSocket: ws://${DEFAULT_API_HOST}:${port}/ws)`);
+  return activeServer;
+}
+
+export function stopServer() {
+  if (activeServer) {
+    activeServer.stop();
+    activeServer = null;
+  }
+}
+
+// Start automatically if run directly via bun
+if (import.meta.main) {
+  startServer();
+}
