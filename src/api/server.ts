@@ -20,6 +20,8 @@ import { alwaysOnService } from "../core/alwayson.js";
 import { notificationManager } from "../core/notifications.js";
 import { globalMemory } from "../core/global-memory.js";
 import { taskQueue } from "../core/task-queue.js";
+import { SchedulerManager } from "../core/scheduler.js";
+import { getJobRunner } from "../core/job_runners.js";
 import { autonomousResearcher } from "../core/autonomous-research.js";
 import { listSoulFiles, getSoulFile, writeSoulFile, deleteSoulFile, hasSoulVault, readGlobalSoulFiles, initGlobalSoulVault } from "../core/soul.js";
 import { rebuildIndex } from "../core/workspace_indexer.js";
@@ -162,8 +164,8 @@ const app = new Elysia()
             env: { ...process.env, LULU_CHANNEL: "dashboard" },
             onToken: (text) => broadcast("text_delta", { text }, data.sessionId),
           })
-            .then((result) => broadcast("text_end", { text: result.text }, result.session.id))
-            .catch((err) => broadcast("error", { message: err instanceof Error ? err.message : String(err) }, data.sessionId));
+            .then((result) => { try { broadcast("text_end", { text: result.text }, result.session.id); } catch {} })
+            .catch((err) => { try { broadcast("error", { message: err instanceof Error ? err.message : String(err) }, data.sessionId); } catch {} });
         }
       } catch {}
     },
@@ -192,7 +194,15 @@ const app = new Elysia()
   .get("/trajectories/file", ({ query }) => {
     const { path: filePath } = query as any;
     if (!filePath) return { error: "path query param required" };
-    try { return loadTrajectoryFile(filePath); }
+    // Reject path traversal attempts
+    if (filePath.includes("..") || path.isAbsolute(filePath)) {
+      return { error: "Invalid path" };
+    }
+    const fullPath = path.join(process.cwd(), ".lulu", "trajectories", filePath);
+    if (!fullPath.startsWith(path.join(process.cwd(), ".lulu", "trajectories"))) {
+      return { error: "Invalid path" };
+    }
+    try { return loadTrajectoryFile(fullPath); }
     catch (err) { return { error: (err as Error).message }; }
   })
   // Coordinator
@@ -329,16 +339,47 @@ const app = new Elysia()
   .get("/queue/tasks", () => ({ tasks: taskQueue.list(), stats: taskQueue.getStats() }))
   .post("/queue/tasks", ({ body }) => {
     const b = body as any;
-    const task = taskQueue.enqueue({ name: b.name, description: b.description, type: b.type, priority: b.priority, trigger: b.trigger });
+    const task = taskQueue.enqueue({ name: b.name, description: b.description, type: b.type, priority: b.priority, trigger: b.trigger, config: b.config });
     return { taskId: task.id };
   }, {
-    body: t.Object({ name: t.String(), description: t.Optional(t.String()), type: t.Optional(t.String()), priority: t.Optional(t.String()), trigger: t.Optional(t.Any()) })
+    body: t.Object({ name: t.String(), description: t.Optional(t.String()), type: t.Optional(t.String()), priority: t.Optional(t.String()), trigger: t.Optional(t.Any()), config: t.Optional(t.Any()) })
   })
   .post("/queue/tasks/:id/run", async ({ params }) => {
     try { return { result: await taskQueue.run(params.id) }; }
     catch (err: any) { return { error: err.message }; }
   })
   .delete("/queue/tasks/:id", ({ params }) => { taskQueue.cancel(params.id); return { cancelled: true }; })
+  // Scheduler
+  .get("/scheduler/jobs", () => {
+    const scheduler = new SchedulerManager();
+    return { jobs: scheduler.list(), status: scheduler.status() };
+  })
+  .get("/scheduler/history", ({ query }) => {
+    const scheduler = new SchedulerManager();
+    const q = query as any;
+    return { history: scheduler.history(q.jobId, parseInt(q.limit || "20", 10)) };
+  })
+  .get("/scheduler/logs", ({ query }) => {
+    const scheduler = new SchedulerManager();
+    const q = query as any;
+    return { logs: scheduler.logs(q.jobId, parseInt(q.limit || "50", 10)) };
+  })
+  .post("/scheduler/jobs/:id/run", async ({ params }) => {
+    const scheduler = new SchedulerManager();
+    const job = scheduler.get(params.id);
+    if (!job) return { error: "Job not found" };
+    const runner = getJobRunner(job);
+    if (!runner) return { error: `Runner not found for: ${job.handler}` };
+    return scheduler.runNow(params.id, runner);
+  })
+  .post("/scheduler/jobs/:id/enable", ({ params }) => {
+    const scheduler = new SchedulerManager();
+    return { enabled: scheduler.enable(params.id) };
+  })
+  .post("/scheduler/jobs/:id/disable", ({ params }) => {
+    const scheduler = new SchedulerManager();
+    return { disabled: scheduler.disable(params.id) };
+  })
   // Autonomous Research
   .get("/research/topics", () => ({ topics: autonomousResearcher.list(), stats: autonomousResearcher.getStats() }))
   .post("/research/topics", ({ body }) => {
@@ -406,6 +447,28 @@ const app = new Elysia()
       const result = rebuildIndex(projectRoot);
       return { indexed: result.indexed, elapsed: result.elapsed };
     } catch (err: any) { return { error: err.message }; }
+  })
+  .post("/workspace/watch", ({ query }) => {
+    try {
+      const projectRoot = (query as any).projectRoot || process.cwd();
+      const { startWatcher, isWatcherRunning } = require("../core/workspace_indexer.js");
+      if (isWatcherRunning()) return { watching: true, message: "Watcher already running" };
+      startWatcher(projectRoot);
+      return { watching: true, projectRoot };
+    } catch (err: any) { return { error: err.message }; }
+  })
+  .post("/workspace/stop", () => {
+    try {
+      const { stopWatcher } = require("../core/workspace_indexer.js");
+      stopWatcher();
+      return { watching: false };
+    } catch (err: any) { return { error: err.message }; }
+  })
+  .get("/workspace/watcher-status", () => {
+    try {
+      const { isWatcherRunning } = require("../core/workspace_indexer.js");
+      return { watching: isWatcherRunning() };
+    } catch { return { watching: false }; }
   })
   .listen(19456);
 

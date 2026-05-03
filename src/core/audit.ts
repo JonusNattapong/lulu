@@ -9,6 +9,7 @@ export type AuditEventType =
   | "tool_call"
   | "tool_result"
   | "policy_decision"
+  | "skill_event"
   | "session_start"
   | "session_end"
   | "task_event"
@@ -139,15 +140,15 @@ export class AuditLog {
           e.id,
           e.type,
           e.timestamp,
-          e.projectName,
-          e.channel,
-          e.sessionId,
-          e.userId,
+          e.projectName ?? null,
+          e.channel ?? null,
+          e.sessionId ?? null,
+          e.userId ?? null,
           JSON.stringify(e.data),
           e.risk,
-          e.duration,
+          e.duration ?? null,
           e.success ? 1 : 0,
-          e.error
+          e.error ?? null
         );
       }
     });
@@ -347,15 +348,15 @@ export class AuditLog {
   }
 }
 
-// Singleton for global audit log
-let globalAuditLog: AuditLog | null = null;
+// Singleton for global audit log — keyed by project name
+const auditLogInstances = new Map<string, AuditLog>();
 
 export function getAuditLog(projectName?: string): AuditLog {
   const name = projectName || "global";
-  if (!globalAuditLog || (globalAuditLog as any).projectName !== name) {
-    globalAuditLog = new AuditLog(name);
+  if (!auditLogInstances.has(name)) {
+    auditLogInstances.set(name, new AuditLog(name));
   }
-  return globalAuditLog;
+  return auditLogInstances.get(name)!;
 }
 
 // Convenience functions for logging
@@ -434,5 +435,20 @@ export function logApproval(
     sessionId: context.sessionId,
     channel: context.channel,
     success: approved,
+  });
+}
+
+export function logSkillEvent(
+  action: string,
+  data: Record<string, any>,
+  context: { projectName?: string; sessionId?: string; channel?: string; risk?: RiskLevel; success?: boolean } = {}
+) {
+  getAuditLog(context.projectName).log({
+    type: "skill_event",
+    data: { action, ...data },
+    risk: context.risk || "medium",
+    sessionId: context.sessionId,
+    channel: context.channel,
+    success: context.success ?? true,
   });
 }

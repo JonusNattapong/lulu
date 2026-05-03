@@ -11,7 +11,13 @@ export interface HeartbeatOptions {
 
 export async function runHeartbeatOnce(manager = new SchedulerManager()): Promise<string[]> {
   manager.scanJobsDir();
-  const dueJobs = manager.getDueJobs();
+  let dueJobs: any[] = [];
+  try {
+    dueJobs = manager.getDueJobs();
+  } catch (e: any) {
+    console.error("[heartbeat] Failed to get due jobs:", e.message);
+    return [];
+  }
   const output: string[] = [];
 
   for (const job of dueJobs) {

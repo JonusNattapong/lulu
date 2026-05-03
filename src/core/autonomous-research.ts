@@ -35,6 +35,7 @@ class AutonomousResearcher {
   private running = false;
   private lastRun?: string;
   private autoMode = false;
+  private autoLoopTimer?: ReturnType<typeof setInterval>;
 
   /** Enable/disable auto research mode */
   enableAutoResearch(enabled: boolean): void {
@@ -206,7 +207,7 @@ class AutonomousResearcher {
     if (this.running) return;
     this.running = true;
 
-    setInterval(async () => {
+    this.autoLoopTimer = setInterval(async () => {
       if (!this.autoMode) return;
 
       // Check global memory for pending research
@@ -224,6 +225,16 @@ class AutonomousResearcher {
         await this.runAll();
       }
     }, 5 * 60 * 1000); // Every 5 minutes
+  }
+
+  /** Stop the auto research loop */
+  stop(): void {
+    this.running = false;
+    this.autoMode = false;
+    if (this.autoLoopTimer) {
+      clearInterval(this.autoLoopTimer);
+      this.autoLoopTimer = undefined;
+    }
   }
 
   /** List research topics */

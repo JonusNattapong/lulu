@@ -21,18 +21,21 @@ export async function runTelegramReport(projectRoot: string): Promise<string> {
   // Generate summary
   const summary = await runDailySummary({ date: new Date().toISOString().split("T")[0], sessions: [], projectRoot });
 
-  // Send via Telegram API
+  // Send via Telegram API using native fetch (avoids shell injection)
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-  const body = JSON.stringify({ chat_id: chatId, text: summary, parse_mode: "Markdown" });
 
   try {
-    const { execSync } = require("node:child_process");
-    execSync(
-      `curl -s -X POST ${url} -H "Content-Type: application/json" -d '${body}'`,
-      { encoding: "utf-8", stdio: "pipe" }
-    );
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: summary, parse_mode: "Markdown" }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      return `❌ Telegram send failed: ${err.slice(-200)}`;
+    }
     return `📱 Telegram report sent to chat ${chatId}`;
   } catch (e: any) {
-    return `❌ Telegram send failed: ${(e.stderr || e.message || "").slice(-200)}`;
+    return `❌ Telegram send failed: ${(e.message || "").slice(-200)}`;
   }
 }

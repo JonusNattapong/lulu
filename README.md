@@ -20,10 +20,12 @@ Lulu is designed to learn your preferences, maintain both project-scoped and cro
 - **Task Queue** - Background automation queue with scheduling, auto-executes due tasks every 30 seconds
 - **Autonomous Research** - Background research without user prompt, extracts findings, sources, and facts
 - **Proactive Suggestions** - Detects patterns and suggests proactively via notifications or session-start surfacing
-- **Skill Proposal Engine** - Auto-detects workflow patterns, proposes skills for user review, creates SKILL.md on approval
+- **Self-Improving Skill Loop** - Auto-detects workflow patterns, proposes skills, creates SKILL.md on approval, evaluates quality, and applies versioned improvements
 - **Desktop App** - Electron app with system tray, global shortcuts, daemon management, and auto-start on boot
-- **Skill System** (32 built-in skills) - File-based skills with SKILL.md format, resolver, and skill retrieval
-- **Knowledge Brain** - Vector search, entity extraction, hybrid search (keyword + graph)
+- **Skill System** (32 built-in skills) - File-based skills with SKILL.md format, resolver, safety metadata, and skill retrieval
+- **Skill Safety Layer** - Trust levels, permission summaries, dry-run skill creation, and audit events for skill writes
+- **Knowledge Brain** - SQLite FTS5 keyword search, optional vector search, entity extraction, and hybrid graph search
+- **Agent Framework** - Declarative agent definitions, runtime registry, gateway agent routing, and reusable core agent loop
 - **Sub-Agent Runtime** - Spawn isolated child sessions for parallel research, code edits, and tests
 - **Trajectory Export** - Export sessions as JSON/JSONL for debugging, evaluation, and fine-tuning
 - **Execution Backends** - Unified execution for local shell, tmux, Docker, and SSH
@@ -40,12 +42,41 @@ Lulu is designed to learn your preferences, maintain both project-scoped and cro
 - Central gateway runtime for routing channel messages into the shared agent loop
 - Central session store shared by CLI, API, dashboard, and Telegram
 - Layered prompt system with base, profile, project, memory, skill, and task context
-- Obsidian-compatible SOUL file system for agent behavior, safety, ops, and heartbeat notes
+- Markdown-based SOUL file system for agent behavior, safety, ops, and heartbeat notes; Obsidian is optional
 - Skill retrieval that loads only relevant learned skills into each prompt
 - Project memory and reflection stored under `~/.lulu/projects/`
 - Tool registry with policy checks for filesystem, shell, tmux, web, git, task, prompt, and system tools
 - Optional tmux tools for terminal session control
 - MCP and plugin-oriented extension points
+
+## Lulu vs OpenClaw vs Hermes Agent
+
+Snapshot verified on 2026-05-03 from public GitHub metadata and project README/docs.
+
+| Feature | Lulu | OpenClaw | Hermes Agent |
+| --- | --- | --- | --- |
+| GitHub | `JonusNattapong/lulu`, 0 stars, 0 forks | `openclaw/openclaw`, 367.6K stars, 75.6K forks | `NousResearch/hermes-agent`, 130.0K stars, 19.6K forks |
+| Positioning | Local personal AI agent with readable SOUL/skills/memory | Local always-on personal assistant for many messaging channels | Self-improving agent that grows with the user |
+| Language | TypeScript | TypeScript | Python |
+| Memory | SOUL Markdown, project memory, global memory, sessions, and user profile | Persistent local state and session memory | SQLite + FTS5, Markdown memory, and external memory plugins |
+| Skills | 32 built-in skills, project/global `SKILL.md`, resolver, retrieval, agent-created proposals, and versioned self-improvement | Large community skill ecosystem | Agent-created and self-improving skills |
+| Learning | Assisted learning through preferences, memory, reflections, and skill proposals | Mostly user-configured automation | Closed learning loop |
+| Channels | CLI, API, dashboard, desktop, Telegram | WhatsApp, Telegram, Slack, Discord, Google Chat, Signal, iMessage, Teams, Matrix, LINE, WeChat, and more | CLI, Telegram, Discord, Slack, WhatsApp, Signal, and more |
+| Providers | Multi-provider abstraction | Many providers and model profiles | Model-agnostic; many providers including OpenRouter, OpenAI, Hugging Face, and custom endpoints |
+| Architecture | Agent framework, gateway, shared sessions, daemon, tool loop, SOUL, and skills | Local gateway, always-on automation, and skills | Agent framework, gateway, schedulers, and memory loop |
+| Proactive | Daemon, suggestions, task queue, and research queue | Background and always-on tasks | Learns patterns and schedules tasks |
+| Knowledge Brain | SQLite FTS5-backed `/brain` search with vector and graph layers | Not the main differentiator | FTS5 session search with LLM summarization |
+| Security | Local-first policy checks, human-readable SOUL rules, skill trust levels, permission summaries, dry-run, and audit logs | Strong DM pairing defaults; broad channel/skill surface still needs careful review | More mature safety posture, still agent-risk territory |
+| License | MIT | MIT | MIT |
+
+| Use Case | Recommendation |
+| --- | --- |
+| CLI coding assistant with a readable brain | Lulu |
+| Personal agent connected everywhere fast | OpenClaw |
+| Agent that improves itself over time | Hermes Agent |
+| Human-reviewable memory, skills, and SOUL files | Lulu |
+| Production-oriented autonomous learning | Hermes Agent |
+| Research and local experimentation | Lulu |
 
 ## Requirements
 
@@ -139,7 +170,7 @@ Common commands:
 | `/new` or `/reset` | Start a fresh session |
 | `/prompt` | Inspect active prompt layers |
 | `/exit` or `/quit` | End the interactive session |
-| `/skills` | Manage skills: list, search, show, create |
+| `/skills` | Manage skills: list, search, show, create, review, evaluate, improve, versions |
 | `/skillify` | Capture workflow as skill |
 | `/brain` | Query knowledge brain |
 | `/resolver` | Manage skill resolver rules |
@@ -284,17 +315,28 @@ Telegram uses the central session store at `~/.lulu/sessions.json`. Private chat
 
 ### Gateway System
 
-Lulu routes API, dashboard, and Telegram prompts through a central gateway runtime. The gateway is responsible for:
+Lulu routes API, dashboard, and Telegram prompts through a central gateway runtime. The gateway now calls the agent framework first, then the selected agent runtime executes the core provider/tool loop. The gateway is responsible for:
 
 - resolving channel-specific configuration
 - routing by channel, subject, and session
 - queueing turns per route key
 - creating and updating sessions
 - handling slash commands
-- running the agent loop
+- selecting an agent by `agentId` and running it through the framework
 - saving final messages back to the central session store
 
 This keeps channel integrations thin. They translate transport-specific events into gateway requests instead of owning agent execution directly.
+
+### Agent Framework
+
+The framework layer lives in `src/core/agent-framework.ts`. It exposes:
+
+- `AgentDefinition`: declarative agent id, name, kind, prompt override, model override, tools, skills, and metadata
+- `AgentRuntime`: pluggable execution backend for an agent definition
+- `AgentFramework`: registry for agents and runtimes
+- `luluAgentFramework`: default framework instance with the built-in `lulu` agent
+
+The built-in `CoreAgentRuntime` wraps the existing `runAgent()` loop, so current CLI/API/Telegram behavior stays compatible while new agents can be registered without duplicating the provider/tool loop.
 
 ### Identity and Binding System
 
@@ -330,7 +372,7 @@ Lulu builds the system prompt from ordered layers:
 1. Built-in base prompt or `LULU_SYSTEM_PROMPT`
 2. Optional prompt profile from `~/.lulu/prompts/<profile>.md`
 3. Optional project prompt from `.lulu-prompt.md` or `.lulu/prompt.md`
-4. Obsidian-compatible SOUL files from `.lulu/*.md`
+4. Markdown SOUL files from `.lulu/*.md`
 5. Project memory
 6. Retrieved skills relevant to the current prompt
 7. Active tasks and runtime context
@@ -339,7 +381,9 @@ Inspect the prompt with `/prompt` or `GET /prompt`.
 
 ### SOUL File System
 
-Lulu can use the project `.lulu/` directory as an Obsidian vault. Initialize the default files from any channel that supports slash commands:
+Lulu uses the project `.lulu/` directory as a local Markdown vault for behavior, safety, operations, and human-reviewable notes. Obsidian is not required; Lulu reads these `.md` files directly from disk. You can edit them with any text editor, including VS Code, Notepad, or Obsidian.
+
+Initialize the default files from any channel that supports slash commands:
 
 ```
 /soul init
@@ -359,7 +403,7 @@ This creates Markdown files:
 | `.lulu/AGENTS.md` | Multi-agent collaboration notes |
 | `.lulu/TOOLS.md` | Tool capability rules |
 
-Open the `.lulu/` folder in Obsidian to edit these files as a local vault.
+Open the `.lulu/` folder in Obsidian if you want vault-style navigation, wiki links, or graph view. This is only an editor choice; Lulu does not depend on Obsidian.
 
 ### Sub-Agent Runtime
 
@@ -410,7 +454,14 @@ Orchestrate complex tasks across multiple agents:
 
 ### Skill Retrieval
 
-Lulu's skill system combines file-based skills with trigger-based resolver and smart retrieval.
+Lulu's skill system is separate from SOUL notes. SOUL files are always-on project behavior context, while skills are reusable workflows stored as `SKILL.md` files and retrieved only when they match the current prompt. The resolver applies routing rules first, then keyword search fills the remaining skill slots.
+
+Every loaded skill now carries safety metadata:
+
+- `trust_level`: `trusted`, `project`, `community`, or `unknown`
+- `permissions`: inferred or declared permissions such as `shell`, `write`, `network`, `git`, `secrets`, and `docker`
+- permission summary: injected into the prompt before the skill body so the model sees the risk profile before following the workflow
+- audit event: skill writes are recorded as `skill_event` entries in the project audit log
 
 **Skill Storage:**
 ```
@@ -442,10 +493,17 @@ Lulu's skill system combines file-based skills with trigger-based resolver and s
 /skills list           # List all skills
 /skills search <query> # Search skills
 /skills show <name>    # Show skill details
-/skillify <name>        # Capture workflow as skill
+/skills safety         # Show trust levels, permissions, and warnings
+/skills create <name> [desc] [triggers...] --dry-run # Preview without writing
+/skills review <name>  # Score skill quality and recommendations
+/skills improve <name> [--apply] [notes...] # Propose/apply a versioned improvement
+/skills versions [name] # Show skill version history
+/skillify <name> [--dry-run] # Capture or preview workflow as skill
 /brain query <query>    # Query knowledge brain
 /curate                 # Optimize skill library
 ```
+
+Skill improvements are human-reviewable by default. `/skills improve <name>` produces an upgraded `SKILL.md` draft with a patch version bump; adding `--apply` writes it, stores a snapshot in `~/.lulu/skill-versions/`, and records metadata in `~/.lulu/skill-versions.json`.
 
 Control the maximum number of injected skills with:
 
@@ -455,7 +513,7 @@ export LULU_SKILL_LIMIT=5
 
 ### Heartbeat and Scheduler
 
-Lulu includes a lightweight scheduler for recurring work such as daily summaries, repo health checks, test runs, and Telegram reports.
+Lulu includes a durable scheduler for recurring work such as daily summaries, repo health checks, test runs, and Telegram reports. Jobs support priority ordering, structured run logs, run history, retry/backoff settings, timeouts, and 5-field cron expressions such as `0 7 * * *`.
 
 Run due jobs once:
 
@@ -473,6 +531,33 @@ Custom job definitions can be placed in:
 
 ```
 ~/.lulu/jobs/*.json
+```
+
+Example job:
+
+```json
+{
+  "id": "repo_health_morning",
+  "name": "Repo Health Morning",
+  "description": "Check repo health every weekday morning",
+  "frequency": "custom",
+  "cron": "0 9 * * 1-5",
+  "handler": "jobs/repo_health",
+  "enabled": true,
+  "priority": "high",
+  "maxRetries": 2,
+  "retryDelayMs": 60000,
+  "timeoutMs": 600000
+}
+```
+
+Scheduler commands:
+
+```sh
+/scheduler list
+/scheduler run repo_health
+/scheduler history repo_health
+/scheduler logs repo_health
 ```
 
 ### Always-On Agent Service
@@ -531,6 +616,8 @@ export LULU_ALLOW_TMUX=true
 
 Use these settings intentionally, especially when exposing Lulu through Telegram or the local API.
 
+Skills are inspectable before they become prompt context. Use `/skills safety` to review trust levels and permission summaries across the library, `/skills show <name>` to inspect one skill's warnings, and `--dry-run` on `/skills create` or `/skillify` to preview the generated `SKILL.md` without writing it. Skill creation writes an audit `skill_event`, so community or auto-generated skills leave a review trail.
+
 ## Development
 
 Common scripts:
@@ -578,6 +665,7 @@ Lulu stores durable runtime state outside the repository:
 | `~/.lulu/daemon.pid` | Daemon process ID |
 | `~/.lulu/global-memory.json` | Cross-session facts, todos, research queue |
 | `~/.lulu/task-queue.json` | Background automation queue |
+| `~/.lulu/scheduler.json` | Scheduled jobs, run history, and structured job logs |
 | `~/.lulu/skill-proposals.json` | Pending skill proposals |
 | `~/.lulu/proactive-suggestions.json` | Active proactive suggestions |
 | `~/.lulu/user-profile.json` | User preferences, learnings, proposals |

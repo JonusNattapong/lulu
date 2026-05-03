@@ -54,8 +54,17 @@ async function createStdioClient(server: MCPServer): Promise<MCPClient> {
     return new Promise((resolve, reject) => {
       const id = Math.random().toString(36).slice(2);
       const msg = JSON.stringify({ jsonrpc: "2.0", id, method, params });
-      
+
       let buffer = "";
+      let resolved = false;
+      let timeoutHandle: NodeJS.Timeout | undefined;
+
+      const cleanup = () => {
+        resolved = true;
+        if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+        proc.stdout?.removeListener("data", onData);
+      };
+
       const onData = (data: Buffer) => {
         buffer += data.toString();
         let newlineIdx;
@@ -65,6 +74,7 @@ async function createStdioClient(server: MCPServer): Promise<MCPClient> {
           try {
             const resp = JSON.parse(line);
             if (resp.id === id) {
+              cleanup();
               if (resp.error) reject(new Error(resp.error.message));
               else resolve(resp.result);
             }
@@ -74,10 +84,15 @@ async function createStdioClient(server: MCPServer): Promise<MCPClient> {
 
       proc.stdout?.on("data", onData);
       proc.stderr?.on("data", (d: Buffer) => console.error(`[MCP ${server.name}]`, d.toString()));
-      
+
       proc.stdin?.write(msg + "\n");
-      
-      setTimeout(() => reject(new Error("MCP request timeout")), 30000);
+
+      timeoutHandle = setTimeout(() => {
+        if (!resolved) {
+          cleanup();
+          reject(new Error("MCP request timeout"));
+        }
+      }, 30000);
     });
   };
 

@@ -9,13 +9,15 @@ import { SessionManager, type SessionRecord } from '../core/session.js';
 import { ConfigResolver } from '../core/config_resolver.js';
 import { commandRegistry } from '../core/commands.js';
 import { detectCapabilities, formatCapabilities } from '../core/capabilities.js';
+import { runAgent } from '../core/agent.js';
+import { loadPromptBuild } from '../core/config.js';
 
 // One-shot mode: no Ink, just plain text output
 const args = process.argv.slice(2);
 const initialPrompt = args.join(' ').trim();
 
 if (initialPrompt) {
-  const config = ConfigResolver.resolve({ env: process.env });
+  const config = resolveCliConfig(initialPrompt);
   if (!config.apiKey) {
     console.error("No API key found. Run 'lulu' without arguments to set up.");
     process.exit(1);
@@ -47,9 +49,9 @@ function startInteractive() {
     const [totalUsage, setTotalUsage] = useState({ inputTokens: 0, outputTokens: 0, totalTokens: 0, costEstimate: 0 });
     const { exit } = useApp();
     
-    const [config, setConfig] = useState(() => ConfigResolver.resolve());
+    const [config, setConfig] = useState(() => resolveCliConfig());
     const [session, setSession] = useState<SessionRecord | null>(() => {
-      const initialConfig = ConfigResolver.resolve();
+      const initialConfig = resolveCliConfig();
       return initialConfig
         ? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config: initialConfig })
         : null;
@@ -62,14 +64,15 @@ function startInteractive() {
 
     const handleSendMessage = useCallback(async (text: string) => {
       if (!config) return;
+      const turnConfig = resolveCliConfig(text);
 
-      const activeSession = session ?? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config });
+      const activeSession = session ?? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config: turnConfig });
 
       // Central Command Handling
       const cmdResult = await commandRegistry.handle(text, { 
         sessionId: activeSession.id, 
         channel: 'cli', 
-        config, 
+        config: turnConfig, 
         sessionManager 
       });
 
@@ -124,14 +127,14 @@ function startInteractive() {
       ]);
 
       try {
-        const activeSession = session ?? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config });
-        const result = await runAgent(config, text, activeSession.messages, (chunk) => {
+        const activeSession = session ?? sessionManager.getOrCreate({ channel: 'cli', subjectId: 'default', title: 'Interactive CLI', config: turnConfig });
+        const result = await runAgent(turnConfig, text, activeSession.messages, (chunk) => {
           setCurrentResponse(prev => prev + chunk);
         });
         
         setMessages(prev => [...prev, { role: 'assistant', content: result.finalText || currentResponse }]);
         setCurrentResponse('');
-        setSession(sessionManager.saveMessages(activeSession.id, result.messages, config));
+        setSession(sessionManager.saveMessages(activeSession.id, result.messages, turnConfig));
         setTotalUsage(prev => ({
           inputTokens: prev.inputTokens + result.usage.inputTokens,
           outputTokens: prev.outputTokens + result.usage.outputTokens,
@@ -162,4 +165,18 @@ function startInteractive() {
   };
 
   render(<LuluLauncher />);
+}
+
+function resolveCliConfig(prompt?: string) {
+  const env = {
+    ...process.env,
+    LULU_CHANNEL: 'cli',
+    ...(prompt ? { LULU_PROMPT_QUERY: prompt } : {}),
+  };
+  const config = ConfigResolver.resolve({ env });
+  return {
+    ...config,
+    systemPrompt: loadPromptBuild(env).systemPrompt,
+    channel: 'cli' as const,
+  };
 }

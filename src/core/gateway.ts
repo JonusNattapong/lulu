@@ -1,5 +1,5 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
-import { runAgent } from "./agent.js";
+import { luluAgentFramework } from "./agent-framework.js";
 import { commandRegistry } from "./commands.js";
 import { ConfigResolver } from "./config_resolver.js";
 import { identityManager, type BindingType } from "./identity.js";
@@ -20,6 +20,7 @@ export interface GatewayRoute {
   requestOverrides?: Partial<AgentConfig>;
   onToken?: (text: string) => void;
   queueKey?: string;
+  agentId?: string;
 }
 
 export interface GatewayResult {
@@ -91,14 +92,20 @@ export class Gateway {
 
     let streamedText = "";
     const history = request.context?.length ? request.context : session.messages;
-    const result = await runAgent(config, prompt, history, (text) => {
-      streamedText += text;
-      request.onToken?.(text);
+    const result = await luluAgentFramework.run(request.agentId || "lulu", {
+      prompt,
+      config,
+      history,
+      metadata: request.metadata,
+      onToken: (text) => {
+        streamedText += text;
+        request.onToken?.(text);
+      },
     });
     const savedSession = this.sessionManager.saveMessages(session.id, result.messages, config);
 
     return {
-      text: result.finalText || streamedText || "Done.",
+      text: result.text || streamedText || "Done.",
       session: savedSession,
       messages: result.messages,
       command: false,

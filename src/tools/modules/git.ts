@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import type { Tool } from "../registry.js";
 
 export const gitTools: Tool[] = [
@@ -20,7 +20,7 @@ export const gitTools: Tool[] = [
       if (input.staged) args.push("--staged");
       if (input.commit) args.push(input.commit);
       if (input.file) args.push("--", input.file);
-      return execSync(`git ${args.join(" ")}`, { encoding: "utf-8", timeout: 15000 }) || "(no changes)";
+      return execFileSync("git", args, { encoding: "utf-8", timeout: 15000 }) || "(no changes)";
     }
   },
   {
@@ -41,7 +41,7 @@ export const gitTools: Tool[] = [
       const args = ["log", `-${Math.min(count, 50)}`, "--oneline", "--decorate"];
       if (input.author) args.push("--author", input.author);
       if (input.file) args.push("--", input.file);
-      return execSync(`git ${args.join(" ")}`, { encoding: "utf-8", timeout: 10000 }) || "(no commits)";
+      return execFileSync("git", args, { encoding: "utf-8", timeout: 10000 }) || "(no commits)";
     }
   }
 ];

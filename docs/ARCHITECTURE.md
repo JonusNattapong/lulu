@@ -35,11 +35,15 @@ graph TD
 
 ### Gateway (`src/core/gateway.ts`)
 
-Central routing for API, dashboard, and Telegram. Handles channel resolution, session routing, queueing, command dispatch, agent execution, and message persistence.
+Central routing for API, dashboard, and Telegram. Handles channel resolution, session routing, queueing, command dispatch, framework-backed agent execution, and message persistence.
+
+### Agent Framework (`src/core/agent-framework.ts`)
+
+Declarative framework surface for defining and running agents. `AgentDefinition` describes an agent's identity, kind, prompt/model overrides, tools, skills, and metadata. `AgentRuntime` provides pluggable execution. The default `CoreAgentRuntime` wraps the existing provider/tool loop, and `luluAgentFramework` registers the built-in `lulu` agent used by the gateway.
 
 ### Agent Loop (`src/core/agent.ts`)
 
-Runs the provider/tool loop, streams events, summarizes long histories, reflects useful knowledge into memory, detects skill opportunities, builds proactive/global context into the system prompt, and writes session history.
+Runs the provider/tool loop used by the default framework runtime, streams events, summarizes long histories, reflects useful knowledge into memory, detects skill opportunities, builds proactive/global context into the system prompt, and writes session history.
 
 ### Personal Agent Daemon (`src/core/daemon.ts`)
 
@@ -55,7 +59,7 @@ Stores user preferences, learnings, skill proposals, and personality settings. L
 
 ### Skill Proposal Manager (`src/core/skill-proposal.ts`)
 
-Auto-detects workflow patterns (e.g., 5+ uses of the same tool), proposes skills for user review, and creates `~/.lulu/skills/auto-generated/<name>/SKILL.md` on approval.
+Auto-detects workflow patterns (e.g., 5+ uses of the same tool), proposes skills for user review, and creates `~/.lulu/skills/<category>/<name>/SKILL.md` on approval. Approved skills are written through the standard skill renderer, evaluated immediately, and normalized through the versioned improvement loop when their quality score is below the threshold.
 
 ### Proactive Engine (`src/core/proactive.ts`)
 
@@ -105,11 +109,15 @@ Pages, entities, and relationships with hybrid search (keyword + graph + optiona
 
 ### Audit System (`src/core/audit.ts`)
 
-Records commands, tool calls, policy decisions, task events, and errors with redacted secrets. Tools: `audit_query`, `audit_stats`, `audit_errors`.
+Records commands, tool calls, policy decisions, skill events, task events, and errors with redacted secrets. Tools: `audit_query`, `audit_stats`, `audit_errors`.
 
 ### Skill System (`src/core/skills.ts`)
 
-File-based skills with SKILL.md format, trigger-based resolver, and smart retrieval. 32 built-in skills across brain, code, git, web, tasks, research, skills, setup, and operational categories.
+File-based skills with SKILL.md format, trigger-based resolver, safety metadata, and smart retrieval. Skills include trust levels, inferred or declared permissions, prompt-visible permission summaries, dry-run previews for creation/capture, and audit records for writes. 32 built-in skills across brain, code, git, web, tasks, research, skills, setup, and operational categories.
+
+### Skill Improvement System (`src/core/skill-improvement.ts`)
+
+Review/evaluate/improve loop for existing and agent-created skills. Scores skill structure, trigger coverage, steps, and quality bars; proposes improved SKILL.md content; and, when applied, writes a patch-version update with a snapshot in `~/.lulu/skill-versions/` plus metadata in `~/.lulu/skill-versions.json`. Commands: `/skills review`, `/skills evaluate`, `/skills improve`, `/skills versions`. Tools: `skill_review`, `skill_improve`, `skill_versions`.
 
 ### Notifications (`src/core/notifications.ts`)
 
@@ -170,7 +178,7 @@ Publishes session, agent, token, tool, and error events. Bridge for live UI upda
 
 ### Scheduler and Job Runners
 
-- `src/core/scheduler.ts`: lightweight job scheduler
+- `src/core/scheduler.ts`: durable job scheduler with priority ordering, cron expressions, retry/backoff, timeout handling, run history, and structured job logs
 - `src/core/job_runners.ts`: job runner implementations
 - `src/jobs/`: built-in jobs (daily_summary, morning_test, repo_health, telegram_report)
 
@@ -204,6 +212,7 @@ Lulu stores durable user state outside the repository:
 - `daemon.pid`: daemon process ID
 - `global-memory.json`: cross-session facts, todos, research queue
 - `task-queue.json`: background automation queue
+- `scheduler.json`: scheduled jobs, run history, retry state, and structured job logs
 - `skill-proposals.json`: pending skill proposals
 - `proactive-suggestions.json`: active proactive suggestions
 - `user-profile.json`: user preferences, learnings, proposals

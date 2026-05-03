@@ -121,7 +121,8 @@ export function buildSystemPrompt(options: {
 function appendSoulLayers(layers: PromptLayer[], projectRoot: string): void {
   // Global soul first (applies to every project)
   initGlobalSoulVault();
-  for (const file of readGlobalSoulFiles()) {
+  const globalFiles = readGlobalSoulFiles();
+  for (const file of globalFiles) {
     layers.push({
       name: `global-soul-${path.basename(file.name, ".md").toLowerCase()}`,
       source: file.path,
@@ -129,13 +130,60 @@ function appendSoulLayers(layers: PromptLayer[], projectRoot: string): void {
     });
   }
   // Project soul overrides global (project-specific rules take precedence)
-  for (const file of readSoulFiles(projectRoot)) {
+  const projectFiles = readSoulFiles(projectRoot);
+  const conflictNote = detectSoulConflicts(globalFiles, projectFiles);
+  for (const file of projectFiles) {
     layers.push({
       name: `soul-${path.basename(file.name, ".md").toLowerCase()}`,
       source: file.path,
       content: file.content,
     });
   }
+  if (conflictNote) {
+    layers.push({
+      name: "soul-override-note",
+      source: "prompt-engine",
+      content: conflictNote,
+    });
+  }
+}
+
+function detectSoulConflicts(globalFiles: any[], projectFiles: any[]): string | null {
+  // Detect key directives that appear in both global and project soul with different values
+  const globalText = globalFiles.map((f) => f.content).join("\n");
+  const projectText = projectFiles.map((f) => f.content).join("\n");
+
+  const globalRules = extractSoulRules(globalText);
+  const projectRules = extractSoulRules(projectText);
+
+  const conflicts: string[] = [];
+  for (const [key, globalVal] of globalRules) {
+    const projectVal = projectRules.get(key);
+    if (projectVal && projectVal !== globalVal) {
+      conflicts.push(`  ⚠️  "${key}": global says "${globalVal}", project overrides with "${projectVal}"`);
+    }
+  }
+
+  if (conflicts.length === 0) return null;
+  return `=== SOUL Override Warning ===\nProject-level SOUL files override global SOUL rules:\n${conflicts.join("\n")}\n================================`;
+}
+
+function extractSoulRules(text: string): Map<string, string> {
+  const rules = new Map<string, string>();
+  const bulletRegex = /^[\s]*[-*]\s+(.+)/gm;
+  let match;
+  while ((match = bulletRegex.exec(text)) !== null) {
+    const line = match[1].trim();
+    const colonIdx = line.indexOf(":");
+    if (colonIdx > 0 && colonIdx < 60) {
+      const key = line.slice(0, colonIdx).trim().toLowerCase();
+      const val = line.slice(colonIdx + 1).trim();
+      if (key && val && !key.startsWith("#")) {
+        rules.set(key, val);
+      }
+    }
+  }
+  return rules;
 }
 
 export function describePrompt(result: PromptBuildResult): string {
@@ -184,7 +232,7 @@ function appendJsonLayer(
 
 function appendSkillLayer(layers: PromptLayer[], query: string, limit: number, projectRoot: string): void {
   try {
-    const { loadAllSkills, searchSkills } = require("./skills.js");
+    const { loadAllSkills, searchSkills, formatPermissionSummary } = require("./skills.js");
     const { getResolver } = require("./resolver.js");
     const skills = loadAllSkills(projectRoot);
 
@@ -224,6 +272,7 @@ function appendSkillLayer(layers: PromptLayer[], query: string, limit: number, p
       lines.push(`## ${skill.name}`);
       lines.push(`**Category:** ${skill.category}`);
       lines.push(`**Triggers:** ${skill.triggers.join(", ")}`);
+      lines.push(formatPermissionSummary(skill.permissionSummary));
       lines.push("");
       lines.push(skill.content);
       lines.push("");

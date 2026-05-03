@@ -30,6 +30,7 @@ Our goal is to create the most intuitive and powerful CLI-based AI assistant for
 - [x] **MCP Support (Dynamic):** Fully automated MCP server discovery and lifecycle.
 - [x] **Web Dashboard:** A local web UI to complement the CLI experience.
 - [x] **Skill System v2:** File-based skills with resolver and smart retrieval.
+- [x] **Skill Safety Layer:** Trust levels, permission summaries, dry-run previews, prompt-visible warnings, and audit events for skill writes.
 - [x] **Knowledge Brain:** Pages, entities, relationships with hybrid search.
 - [x] **Interactive Approval:** CLI approval system for high-risk actions.
 - [x] **Identity and Binding System:** Central users, roles, and channel bindings.

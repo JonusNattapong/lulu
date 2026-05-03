@@ -17,7 +17,15 @@ export async function runDailySummary(_input: DailySummaryInput): Promise<string
   const storePath = join(homedir(), ".lulu", "sessions.json");
   if (!existsSync(storePath)) return "No session history found.";
 
-  const sessions = JSON.parse(readFileSync(storePath, "utf-8"));
+  let sessions: Record<string, any> = {};
+  try {
+    const raw = readFileSync(storePath, "utf-8").trim();
+    if (!raw) return "No session history found (empty file).";
+    sessions = JSON.parse(raw);
+  } catch (err) {
+    return `Failed to read session history: ${(err as Error).message}`;
+  }
+
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yStr = yesterday.toISOString().split("T")[0];
@@ -31,7 +39,7 @@ export async function runDailySummary(_input: DailySummaryInput): Promise<string
   const totalTurns = yesterdaySessions.reduce((a: number, s: any) => a + (s.turnCount || 0), 0);
 
   return [
-    `📊 Daily Summary — ${yStr}`,
+    `Daily Summary — ${yStr}`,
     `Sessions: ${yesterdaySessions.length} | Turns: ${totalTurns}`,
     "",
     ...yesterdaySessions.slice(0, 5).map((s: any) => `- ${s.title || s.id}: ${s.turnCount || 0} turns`),

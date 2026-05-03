@@ -36,7 +36,9 @@ export function exportTrajectory(
   if (sessionId) {
     // Export specific session
     const session = sessionManager.get(sessionId);
-    if (session) {
+    if (!session) {
+      console.warn(`[Trajectory] Session not found: ${sessionId}`);
+    } else {
       exports.push(buildExport(session, history, filter));
     }
   } else {
@@ -192,7 +194,21 @@ export function listExportedTrajectories(): { path: string; size: number; create
 export function loadTrajectoryFile(filePath: string): TrajectoryExport[] {
   const content = readFileSync(filePath, "utf-8");
   if (filePath.endsWith(".jsonl")) {
-    return content.split("\n").filter(Boolean).map(line => JSON.parse(line));
+    const results: TrajectoryExport[] = [];
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        results.push(JSON.parse(line));
+      } catch (err) {
+        console.warn(`[Trajectory] Skipped malformed line in ${filePath}: ${(err as Error).message}`);
+      }
+    }
+    return results;
   }
-  return [JSON.parse(content)];
+  try {
+    return [JSON.parse(content)];
+  } catch (err) {
+    console.error(`[Trajectory] Failed to parse trajectory file ${filePath}: ${(err as Error).message}`);
+    return [];
+  }
 }

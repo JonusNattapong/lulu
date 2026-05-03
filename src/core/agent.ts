@@ -11,7 +11,7 @@ import {
 import { BUILTIN_TOOLS, executeTool, loadPlugins, getPluginTools } from "../tools/tools.js";
 import { loadMCPServers, getMCPTools, callMCPTool, closeAllMCP } from "./mcp.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/index.js";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import pc from "picocolors";
@@ -24,6 +24,7 @@ import { proactiveEngine } from "./proactive.js";
 import { globalMemory } from "./global-memory.js";
 import { preferenceLearner } from "./preferences.js";
 import { selfReflection } from "./self-reflection.js";
+import { improveSkill } from "./skill-improvement.js";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_HISTORY_MESSAGES = 12;
@@ -50,7 +51,7 @@ async function summarizeHistory(config: AgentConfig, messages: MessageParam[]): 
 async function reflectAndStore(config: AgentConfig, messages: MessageParam[]) {
   const memoryManager = new MemoryManager(config.projectName || "default");
   
-  const reflectionPrompt = "Reflect on the session. Extract a single-paragraph summary of project knowledge (MEMORY UPDATE). Also, if you discovered a reusable workflow or command pattern, describe it as a SKILL (SKILL UPDATE). Format: MEMORY UPDATE: ... SKILL UPDATE: ...";
+  const reflectionPrompt = "Reflect on the session.\n1. Extract a single-paragraph summary of project knowledge (MEMORY UPDATE).\n2. If you discovered a NEW reusable workflow, describe it as a SKILL (SKILL UPDATE).\n3. If you used an EXISTING skill and found ways to improve it (e.g. missing steps, better prompts), describe it (SKILL IMPROVEMENT: [SkillName] | [Notes]).\nFormat: MEMORY UPDATE: ... SKILL UPDATE: ... SKILL IMPROVEMENT: ...";
   
   const stream = sendToProviderStream(config, [
     ...messages,
@@ -63,20 +64,54 @@ async function reflectAndStore(config: AgentConfig, messages: MessageParam[]) {
   }
 
   if (reflection.includes("MEMORY UPDATE:")) {
-    const memoryPart = reflection.split("MEMORY UPDATE:")[1]?.split("SKILL UPDATE:")[0]?.trim();
+    const memoryPart = reflection.split("MEMORY UPDATE:")[1]?.split("SKILL UPDATE:")[0]?.split("SKILL IMPROVEMENT:")[0]?.trim();
     if (memoryPart) {
       await memoryManager.addMemory(config, memoryPart, { type: "reflection" });
     }
   }
 
   if (reflection.includes("SKILL UPDATE:")) {
-    const skillPart = reflection.split("SKILL UPDATE:")[1]?.trim();
+    const skillPart = reflection.split("SKILL UPDATE:")[1]?.split("SKILL IMPROVEMENT:")[0]?.trim();
     if (skillPart) {
-      const skillsPath = path.join(homedir(), ".lulu", "skills.json");
-      const currentSkills = existsSync(skillsPath) ? JSON.parse(readFileSync(skillsPath, "utf-8")) : {};
-      const skillName = `auto-${Date.now()}`;
-      currentSkills[skillName] = { name: skillName, description: "Auto-learned skill", steps: skillPart };
-      writeFileSync(skillsPath, JSON.stringify(currentSkills, null, 2));
+      const skillName = skillProposalManager.generateSkillName(skillPart, "auto-learned");
+      skillProposalManager.propose({
+        name: skillName,
+        description: "Auto-learned workflow from session reflection",
+        category: "auto-generated",
+        triggers: [skillName, "auto-learned workflow"],
+        steps: skillPart,
+        examples: [],
+      });
+    }
+  }
+
+  if (reflection.includes("SKILL IMPROVEMENT:")) {
+    const improvePart = reflection.split("SKILL IMPROVEMENT:")[1]?.trim();
+    if (improvePart) {
+      const [skillName, ...notesArr] = improvePart.split("|");
+      const notes = notesArr.join("|").trim();
+      if (skillName && notes) {
+        try {
+          const result = improveSkill({
+            skillName: skillName.trim(),
+            projectRoot: config.projectRoot,
+            notes: `Auto-evolved from session reflection: ${notes}`,
+            apply: true
+          });
+          if (result && result.applied) {
+            proactiveEngine.suggest({
+              type: "opportunity",
+              title: `✨ Skill Auto-Evolved: ${result.skillName}`,
+              body: `I automatically improved the skill **${result.skillName}** to version ${result.newVersion} based on our recent session.\nNotes: ${notes}`,
+              context: `skill:${result.skillName}`,
+              priority: "high",
+            });
+            console.log(`[Agent] Skill auto-evolved: ${result.skillName} (v${result.newVersion})`);
+          }
+        } catch (e) {
+          console.error("[Reflection] Auto-improve failed:", e);
+        }
+      }
     }
   }
 }

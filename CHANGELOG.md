@@ -5,6 +5,8 @@ All notable changes to the Lulu project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Skill Improvement Loop** - Review/evaluate/improve/version existing skills with `/skills review`, `/skills evaluate`, `/skills improve`, `/skills versions` and matching skill tools.
+- **Skill Safety Layer** - Skills now carry trust levels, inferred/declared permission summaries, prompt-visible safety warnings, dry-run previews for skill creation/capture, and audit `skill_event` records for skill writes.
 
 ### Changed
 
@@ -36,8 +38,8 @@ All notable changes to the Lulu project will be documented in this file.
 - **Telegram Pairing Wizard:** Added `telegram:setup` to validate a bot token, approve a Telegram chat from the host terminal, and persist approved bindings in `~/.lulu/telegram.json`.
 - **Gateway Runtime:** Added a central gateway for API, dashboard, and Telegram routing, including per-route queues, session resolution, command handling, agent execution, and message persistence.
 - **Identity and Binding System:** Added central users, roles, channel bindings, project bindings, and agent bindings in `~/.lulu/identity.json`, with Telegram setup writing identity bindings during pairing.
-- **SOUL File System:** Added Obsidian-compatible `.lulu/*.md` behavior files and `/soul init`.
-- **Skill Retrieval:** Prompt construction now selects relevant learned skills instead of injecting the entire skill store.
+- **SOUL File System:** Added Markdown-based `.lulu/*.md` behavior files and `/soul init`. Obsidian is optional; Lulu reads these files directly from disk.
+- **Skill Retrieval:** Prompt construction now selects relevant `SKILL.md` files from project/global skill folders instead of injecting the entire skill store.
 - **Heartbeat Runner:** Added `heartbeat` and `heartbeat:once` scripts for recurring scheduler jobs.
 
 ### Changed

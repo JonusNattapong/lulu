@@ -17,14 +17,19 @@ export class MemoryManager {
   constructor(projectName: string) {
     const projectDir = path.join(homedir(), ".lulu", "projects", projectName);
     if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
-    
-    const dbPath = path.join(projectDir, "brain.db");
+
+    // Use separate DB for memory to avoid conflict with brain.db (used by TaskManager)
+    const dbPath = path.join(projectDir, "memory.db");
     this.db = new Database(dbPath);
-    
-    // Load sqlite-vec extension
-    const vecPath = sqliteVec.getLoadablePath();
-    this.db.loadExtension(vecPath);
-    
+
+    // Try loading sqlite-vec extension but continue without it if unavailable
+    try {
+      const vecPath = sqliteVec.getLoadablePath();
+      this.db.loadExtension(vecPath);
+    } catch (err) {
+      console.log("[Memory] Vector search unavailable, using keyword fallback");
+    }
+
     this.init();
   }
 
@@ -37,26 +42,37 @@ export class MemoryManager {
         metadata TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       );
-      
-      -- Create virtual table for vector search
-      -- 384 is the dimension for all-MiniLM-L6-v2
-      CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories_local USING vec0(
-        embedding float[384]
-      );
     `);
+
+    // Try to create virtual table for vector search
+    // 384 is the dimension for all-MiniLM-L6-v2
+    try {
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories_local USING vec0(
+          embedding float[384]
+        );
+      `);
+    } catch {
+      console.log("[Memory] Vector search unavailable, using keyword fallback");
+    }
   }
 
   async addMemory(config: AgentConfig, content: string, metadata: any = {}) {
     try {
       const { embedding } = await getEmbedding(config, content);
-      
+
       const insert = this.db.prepare('INSERT INTO memories (content, metadata) VALUES (?, ?)');
       insert.run(content, JSON.stringify(metadata));
       const rowid = (this.db as any).lastInsertRowid;
 
-      const insertVec = this.db.prepare('INSERT INTO vec_memories_local (rowid, embedding) VALUES (?, ?)');
-      insertVec.run(rowid, new Float32Array(embedding));
-      
+      // Try vector insert, skip if vec not available
+      try {
+        const insertVec = this.db.prepare('INSERT INTO vec_memories_local (rowid, embedding) VALUES (?, ?)');
+        insertVec.run(rowid, new Float32Array(embedding));
+      } catch {
+        // Vector table not available — skip
+      }
+
       return rowid;
     } catch (err) {
       console.error("[Memory] Failed to add memory:", err);
@@ -65,29 +81,59 @@ export class MemoryManager {
 
   async search(config: AgentConfig, query: string, limit: number = 5): Promise<MemoryEntry[]> {
     try {
+      // Try vector search first
       const { embedding } = await getEmbedding(config, query);
-      
-      const stmt = this.db.prepare(`
-        SELECT 
-          m.content,
-          m.metadata,
-          v.distance
-        FROM vec_memories_local v
-        JOIN memories m ON m.id = v.rowid
-        WHERE embedding MATCH ?
-          AND k = ?
-        ORDER BY distance
-      `);
-      
-      const rows = stmt.all(new Float32Array(embedding), limit) as any[];
-      return rows.map(r => ({
-        content: r.content,
-        metadata: r.metadata
-      }));
+
+      try {
+        const stmt = this.db.prepare(`
+          SELECT
+            m.content,
+            m.metadata,
+            v.distance
+          FROM vec_memories_local v
+          JOIN memories m ON m.id = v.rowid
+          WHERE embedding MATCH ?
+            AND k = ?
+          ORDER BY distance
+        `);
+
+        const rows = stmt.all(new Float32Array(embedding), limit) as any[];
+        return rows.map(r => ({
+          content: r.content,
+          metadata: r.metadata
+        }));
+      } catch {
+        // Fallback to keyword search
+        return this.keywordSearch(query, limit);
+      }
     } catch (err) {
       console.error("[Memory] Search failed:", err);
-      return [];
+      return this.keywordSearch(query, limit);
     }
+  }
+
+  private keywordSearch(query: string, limit: number): MemoryEntry[] {
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+    if (words.length === 0) return [];
+
+    const rows = this.db.prepare(
+      "SELECT * FROM memories ORDER BY timestamp DESC"
+    ).all() as any[];
+
+    const scored = rows
+      .map(r => {
+        const content = r.content.toLowerCase();
+        const score = words.reduce((s, w) => s + (content.includes(w) ? 1 : 0), 0);
+        return { row: r, score };
+      })
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return scored.map(r => ({
+      content: r.row.content,
+      metadata: r.row.metadata
+    }));
   }
 
   close() {

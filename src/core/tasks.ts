@@ -35,8 +35,9 @@ export class TaskManager {
   constructor(projectName: string) {
     const projectDir = path.join(homedir(), ".lulu", "projects", projectName);
     if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
-    
-    const dbPath = path.join(projectDir, "brain.db");
+
+    // Use separate DB for tasks to avoid conflict with brain.db (used by Brain) and memory.db (used by MemoryManager)
+    const dbPath = path.join(projectDir, "tasks.db");
     this.db = new Database(dbPath);
     this.init();
   }

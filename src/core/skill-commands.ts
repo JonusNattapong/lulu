@@ -1,5 +1,6 @@
 import type { CommandContext, CommandResult } from "./commands.js";
-import { loadAllSkills, searchSkills, listCategories, getSkillStats, formatSkill, createSkill, skillify } from "./skills.js";
+import { loadAllSkills, searchSkills, listCategories, getSkillStats, formatSkill, createSkill, skillify, previewSkill, summarizeSkillLibrary } from "./skills.js";
+import { formatSkillEvaluation, improveSkill, listSkillVersions, reviewSkill } from "./skill-improvement.js";
 import { getResolver } from "./resolver.js";
 
 // Skill commands registration - called after commands module is loaded
@@ -76,6 +77,11 @@ export async function registerSkillCommands() {
           return { text: formatSkill(skill), data: skill };
         }
 
+        case "safety": {
+          const skills = loadAllSkills(projectRoot);
+          return { text: summarizeSkillLibrary(skills), data: skills.map((skill) => skill.permissionSummary) };
+        }
+
         case "categories": {
           const skills = loadAllSkills(projectRoot);
           const cats = listCategories(skills);
@@ -99,18 +105,20 @@ export async function registerSkillCommands() {
         case "create": {
           const name = args[1];
           const description = args[2] || "No description";
-          const triggers = args.slice(3);
+          const dryRun = args.includes("--dry-run");
+          const triggers = args.slice(3).filter((arg) => arg !== "--dry-run");
 
           if (!name) {
             return {
-              text: `Usage: /skills create <name> [description] [triggers...]
+              text: `Usage: /skills create <name> [description] [triggers...] [--dry-run]
 
 Example:
-  /skills create my-skill "Does something useful" "useful" "help"`,
+  /skills create my-skill "Does something useful" "useful" "help"
+  /skills create my-skill "Does something useful" --dry-run`,
             };
           }
 
-          const path = createSkill({
+          const params = {
             name,
             description,
             triggers: triggers.length ? triggers : [name, ...name.split(/[-_]/)],
@@ -122,7 +130,17 @@ Example:
               "3. Verify the result",
               "4. Report completion",
             ],
-          });
+            auditContext: {
+              projectName: context.config.projectName,
+              channel: context.config.channel,
+            },
+          };
+
+          if (dryRun) {
+            return { text: previewSkill(params) };
+          }
+
+          const path = createSkill(params);
 
           return { text: `Skill created: ${path}` };
         }
@@ -147,6 +165,70 @@ ${formatSkill(result.skill)}`,
           };
         }
 
+        case "review":
+        case "evaluate": {
+          const skillName = args[1];
+          if (!skillName) return { text: `Usage: /skills ${sub} <name>` };
+
+          const evaluation = reviewSkill(skillName, projectRoot);
+          if (!evaluation) return { text: `Skill not found: ${skillName}` };
+
+          return { text: formatSkillEvaluation(evaluation), data: evaluation };
+        }
+
+        case "improve": {
+          const skillName = args[1];
+          if (!skillName) {
+            return { text: "Usage: /skills improve <name> [--apply] [notes...]" };
+          }
+
+          const apply = args.includes("--apply");
+          const notes = args
+            .slice(2)
+            .filter((arg) => arg !== "--apply")
+            .join(" ");
+          const result = improveSkill({ skillName, projectRoot, notes, apply });
+
+          if (!result) return { text: `Skill not found: ${skillName}` };
+
+          const lines = [
+            `## Skill Improvement: ${result.skillName}`,
+            "",
+            `**Applied:** ${result.applied ? "yes" : "no"}`,
+            `**Version:** ${result.previousVersion} -> ${result.newVersion}`,
+            `**Source:** ${result.source}`,
+            "",
+            formatSkillEvaluation(result.evaluation),
+          ];
+
+          if (!result.applied) {
+            lines.push("", "Run with `--apply` to write the improved skill and create a version snapshot.");
+          } else if (result.version) {
+            lines.push("", `Snapshot: ${result.version.snapshotPath}`);
+          }
+
+          return { text: lines.join("\n"), data: result };
+        }
+
+        case "versions": {
+          const skillName = args[1];
+          const versions = listSkillVersions(skillName);
+
+          if (versions.length === 0) {
+            return { text: skillName ? `No versions recorded for: ${skillName}` : "No skill versions recorded yet." };
+          }
+
+          const lines = [
+            `## Skill Versions${skillName ? `: ${skillName}` : ""}`,
+            "",
+            ...versions.map((version) =>
+              `- \`${version.skillName}\` ${version.previousVersion} -> ${version.newVersion} (${version.createdAt})\n  ${version.reason}\n  Snapshot: ${version.snapshotPath}`
+            ),
+          ];
+
+          return { text: lines.join("\n"), data: versions };
+        }
+
         default:
           return {
             text: `Usage: /skills <command>
@@ -155,15 +237,23 @@ Commands:
   list          - List all skills
   search <query> - Search skills
   show <name>    - Show skill details
+  safety        - Show trust levels and permission summary
   categories    - List by category
-  create <name> [desc] [triggers...] - Create new skill
+  create <name> [desc] [triggers...] [--dry-run] - Create or preview a skill
   resolve <query> - Resolve query to skill
+  review <name>   - Review skill quality
+  evaluate <name> - Evaluate skill quality
+  improve <name> [--apply] [notes...] - Propose or apply an improved skill version
+  versions [name] - Show skill version history
 
 Examples:
   /skills list
+  /skills safety
   /skills search "git commit"
   /skills show git-commit
-  /skills create my-skill "My custom skill" "custom" "help"`,
+  /skills create my-skill "My custom skill" "custom" "help"
+  /skills create my-skill "My custom skill" --dry-run
+  /skills improve my-skill --apply "Added verification steps"`,
           };
       }
     },
@@ -173,28 +263,48 @@ Examples:
   commandRegistry.register({
     name: "skillify",
     description: "Capture current workflow as a reusable skill: /skillify <name>",
-    execute: async (args): Promise<CommandResult> => {
+    execute: async (args, context): Promise<CommandResult> => {
       const name = args[0];
       if (!name) {
         return {
-          text: `Usage: /skillify <name> [description]
+          text: `Usage: /skillify <name> [description] [--dry-run]
 
 Captures the recent workflow as a skill for future reuse.
 The skill will be saved to ~/.lulu/skills/learned/
 
 Example:
-  /skillify my-workflow "A useful workflow"`,
+  /skillify my-workflow "A useful workflow"
+  /skillify my-workflow "A useful workflow" --dry-run`,
         };
       }
 
-      const description = args.slice(1).join(" ") || `Captured workflow: ${name}`;
+      const dryRun = args.includes("--dry-run");
+      const description = args.slice(1).filter((arg) => arg !== "--dry-run").join(" ") || `Captured workflow: ${name}`;
+      const capturedAt = `Captured at ${new Date().toISOString()}`;
+
+      if (dryRun) {
+        return {
+          text: previewSkill({
+            name,
+            description,
+            triggers: [name, ...name.split(/[-_]/)],
+            category: "learned",
+            qualityBar: "Successfully completed the workflow",
+            steps: [capturedAt],
+          }),
+        };
+      }
 
       const path = skillify({
         name,
         description,
-        workflow: `Captured at ${new Date().toISOString()}`,
+        workflow: capturedAt,
         triggers: [name, ...name.split(/[-_]/)],
         category: "learned",
+        auditContext: {
+          projectName: context.config.projectName,
+          channel: context.config.channel,
+        },
       });
 
       return { text: `Skill captured: ${path}` };
@@ -226,10 +336,12 @@ Example:
             "",
             ...results.map((r, i) => [
               `### ${i + 1}. ${r.page.title}`,
+              `Source: ${r.source || "brain"}${r.sourcePath ? ` (${r.sourcePath})` : ""}`,
               r.page.content.slice(0, 200) + (r.page.content.length > 200 ? "..." : ""),
               `Score: ${r.score.toFixed(3)}`,
+              r.highlights.length ? `Highlights:\n${r.highlights.map((h) => `- ${h}`).join("\n")}` : "",
               "",
-            ].join("\n")),
+            ].filter(Boolean).join("\n")),
           ];
 
           return { text: lines.join("\n"), data: results };

@@ -15,6 +15,8 @@ import { proactiveEngine } from "./proactive.js";
 import { globalMemory } from "./global-memory.js";
 import { taskQueue } from "./task-queue.js";
 import { autonomousResearcher } from "./autonomous-research.js";
+import { SchedulerManager } from "./scheduler.js";
+import { getJobRunner } from "./job_runners.js";
 
 export interface CommandContext {
   sessionId: string;
@@ -434,6 +436,57 @@ commandRegistry.register({
   }
 });
 
+// Scheduler Commands
+commandRegistry.register({
+  name: "scheduler",
+  description: "Scheduler: /scheduler list, run <id>, history [id], logs [id], enable <id>, disable <id>",
+  execute: async (args) => {
+    const manager = new SchedulerManager();
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === "list" || !sub) {
+      const jobs = manager.status();
+      if (jobs.length === 0) return { text: "No scheduled jobs." };
+      const lines = [`${jobs.length} scheduled job(s):`];
+      for (const j of jobs) {
+        lines.push(`  [${j.id}] [${j.status}] ${j.priority} retry ${j.retryCount}/${j.maxRetries} next=${j.nextRun || "none"}`);
+      }
+      return { text: lines.join("\n"), data: jobs };
+    }
+
+    if (sub === "run" && args[1]) {
+      const job = manager.get(args[1]);
+      if (!job) return { text: `Job not found: ${args[1]}` };
+      const runner = getJobRunner(job);
+      if (!runner) return { text: `Runner not found for: ${job.handler}` };
+      const result = await manager.runNow(job.id, runner);
+      return { text: result.success ? `Job completed:\n${result.output}` : `Job failed${result.nextRetryAt ? `; retry at ${result.nextRetryAt}` : ""}:\n${result.output}` };
+    }
+
+    if (sub === "history") {
+      const records = manager.history(args[1], 20);
+      if (records.length === 0) return { text: "No run history." };
+      return { text: records.map((r) => `${r.success ? "OK" : "FAIL"} ${r.jobId} attempt ${r.attempt} ${r.start}${r.durationMs !== undefined ? ` ${r.durationMs}ms` : ""}${r.error ? ` - ${r.error}` : ""}`).join("\n"), data: records };
+    }
+
+    if (sub === "logs") {
+      const logs = manager.logs(args[1], 50);
+      if (logs.length === 0) return { text: "No scheduler logs." };
+      return { text: logs.map((l) => `[${l.timestamp}] ${l.level.toUpperCase()} ${l.jobId}: ${l.message}`).join("\n"), data: logs };
+    }
+
+    if (sub === "enable" && args[1]) {
+      return { text: manager.enable(args[1]) ? `Enabled ${args[1]}` : `Job not found: ${args[1]}` };
+    }
+
+    if (sub === "disable" && args[1]) {
+      return { text: manager.disable(args[1]) ? `Disabled ${args[1]}` : `Job not found: ${args[1]}` };
+    }
+
+    return { text: "Usage: /scheduler [list|run <id>|history [id]|logs [id]|enable <id>|disable <id>]" };
+  }
+});
+
 // Research Commands
 commandRegistry.register({
   name: "research",
@@ -473,10 +526,31 @@ commandRegistry.register({
 // Workspace Indexer Commands
 commandRegistry.register({
   name: "index",
-  description: "Index project: /index, /index rebuild",
+  description: "Index project: /index, /index rebuild, /index watch, /index stop",
   execute: async (args, { config }) => {
     const sub = args[0]?.toLowerCase();
     const projectRoot = config.projectRoot || process.cwd();
+
+    if (sub === "watch") {
+      try {
+        const { startWatcher, isWatcherRunning } = await import("./workspace_indexer.js");
+        if (isWatcherRunning()) return { text: "Watcher already running. Use /index stop to stop it." };
+        startWatcher(projectRoot);
+        return { text: `Watching ${projectRoot} for file changes...` };
+      } catch (err: any) {
+        return { text: `Watch error: ${err.message}` };
+      }
+    }
+
+    if (sub === "stop") {
+      try {
+        const { stopWatcher } = await import("./workspace_indexer.js");
+        stopWatcher();
+        return { text: "Watcher stopped." };
+      } catch (err: any) {
+        return { text: `Stop error: ${err.message}` };
+      }
+    }
 
     if (sub === "rebuild") {
       try {

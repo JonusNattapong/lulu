@@ -1,6 +1,7 @@
 import type { Tool } from "../registry.js";
 import type { AgentConfig } from "../../types/types.js";
-import { loadAllSkills, searchSkills, createSkill, skillify, getSkillStats } from "../../core/skills.js";
+import { loadAllSkills, searchSkills, createSkill, skillify, getSkillStats, previewSkill, summarizeSkillLibrary } from "../../core/skills.js";
+import { formatSkillEvaluation, improveSkill, listSkillVersions, reviewSkill } from "../../core/skill-improvement.js";
 import { getBrain } from "../../core/brain.js";
 
 // Helper to execute tool logic
@@ -30,11 +31,15 @@ async function executeSkillSearchTool(input: any, config: AgentConfig): Promise<
 }
 
 async function executeSkillListTool(input: any, config: AgentConfig): Promise<string> {
-  const { category } = input;
+  const { category, include_safety = false } = input;
   const projectRoot = config.projectRoot || process.cwd();
 
   const skills = loadAllSkills(projectRoot);
   const stats = getSkillStats(skills);
+
+  if (include_safety) {
+    return summarizeSkillLibrary(category ? skills.filter((s) => s.category === category) : skills);
+  }
 
   if (category) {
     const filtered = skills.filter((s) => s.category === category);
@@ -59,17 +64,29 @@ async function executeSkillListTool(input: any, config: AgentConfig): Promise<st
 }
 
 async function executeSkillCreateTool(input: any, config: AgentConfig): Promise<string> {
-  const { name, description, triggers, category = "general", steps, quality_bar } = input;
+  const { name, description, triggers, category = "general", steps, quality_bar, dry_run = false, permissions = [], trust_level } = input;
 
   try {
-    const path = createSkill({
+    const params = {
       name,
       description,
       triggers,
       category,
       qualityBar: quality_bar || "Task completed successfully",
       steps,
-    });
+      permissions,
+      trustLevel: trust_level,
+      auditContext: {
+        projectName: config.projectName,
+        channel: config.channel,
+      },
+    };
+
+    if (dry_run) {
+      return previewSkill(params);
+    }
+
+    const path = createSkill(params);
 
     return `Created skill: ${name}\nLocation: ${path}`;
   } catch (err: any) {
@@ -78,20 +95,97 @@ async function executeSkillCreateTool(input: any, config: AgentConfig): Promise<
 }
 
 async function executeSkillCaptureTool(input: any, config: AgentConfig): Promise<string> {
-  const { name, workflow, triggers = [] } = input;
+  const { name, workflow, triggers = [], dry_run = false, permissions = [], trust_level } = input;
 
   try {
+    if (dry_run) {
+      return previewSkill({
+        name,
+        description: `Captured workflow: ${name}`,
+        triggers: [name, ...triggers],
+        category: "learned",
+        qualityBar: "Successfully completed the workflow",
+        steps: workflow.split("\n").filter(Boolean),
+        permissions,
+        trustLevel: trust_level,
+      });
+    }
+
     const path = skillify({
       name,
       description: `Captured workflow: ${name}`,
       workflow,
       triggers: [name, ...triggers],
+      permissions,
+      trustLevel: trust_level,
+      auditContext: {
+        projectName: config.projectName,
+        channel: config.channel,
+      },
     });
 
     return `Captured skill: ${name}\nLocation: ${path}`;
   } catch (err: any) {
     return `Failed to capture skill: ${err.message}`;
   }
+}
+
+async function executeSkillReviewTool(input: any, config: AgentConfig): Promise<string> {
+  const { name } = input;
+  const evaluation = reviewSkill(name, config.projectRoot || process.cwd());
+
+  if (!evaluation) {
+    return `Skill not found: ${name}`;
+  }
+
+  return formatSkillEvaluation(evaluation);
+}
+
+async function executeSkillImproveTool(input: any, config: AgentConfig): Promise<string> {
+  const { name, notes, apply = false } = input;
+  const result = improveSkill({
+    skillName: name,
+    projectRoot: config.projectRoot || process.cwd(),
+    notes,
+    apply,
+  });
+
+  if (!result) {
+    return `Skill not found: ${name}`;
+  }
+
+  const lines = [
+    `Skill improvement: ${result.skillName}`,
+    `Applied: ${result.applied ? "yes" : "no"}`,
+    `Version: ${result.previousVersion} -> ${result.newVersion}`,
+    `Source: ${result.source}`,
+    "",
+    formatSkillEvaluation(result.evaluation),
+  ];
+
+  if (result.version) {
+    lines.push("", `Snapshot: ${result.version.snapshotPath}`);
+  } else {
+    lines.push("", "Set apply=true to write the improved skill and record a version snapshot.");
+  }
+
+  return lines.join("\n");
+}
+
+async function executeSkillVersionsTool(input: any): Promise<string> {
+  const versions = listSkillVersions(input.name);
+
+  if (versions.length === 0) {
+    return input.name ? `No versions recorded for: ${input.name}` : "No skill versions recorded yet.";
+  }
+
+  return [
+    `Skill versions${input.name ? ` for ${input.name}` : ""}:`,
+    "",
+    ...versions.map((version) =>
+      `- ${version.skillName} ${version.previousVersion} -> ${version.newVersion} (${version.createdAt})\n  ${version.reason}\n  Snapshot: ${version.snapshotPath}`
+    ),
+  ].join("\n");
 }
 
 async function executeBrainQueryTool(input: any, config: AgentConfig): Promise<string> {
@@ -111,6 +205,7 @@ async function executeBrainQueryTool(input: any, config: AgentConfig): Promise<s
       "",
       ...results.map(
         (r, i) => `**${i + 1}. ${r.page.title}** (${(r.score * 100).toFixed(0)}%)
+Source: ${r.source || "brain"}${r.sourcePath ? ` (${r.sourcePath})` : ""}
 ${r.page.content.slice(0, 300)}${r.page.content.length > 300 ? "..." : ""}`
       ),
     ];
@@ -195,6 +290,10 @@ export const skillTools: Tool[] = [
           type: "string",
           description: "Filter by category (optional)",
         },
+        include_safety: {
+          type: "boolean",
+          description: "Return trust levels, inferred permissions, and warnings instead of the normal list",
+        },
       },
     },
     execute: executeSkillListTool,
@@ -234,6 +333,19 @@ export const skillTools: Tool[] = [
           type: "string",
           description: "What success looks like",
         },
+        dry_run: {
+          type: "boolean",
+          description: "Preview the skill and permission summary without writing files",
+        },
+        permissions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Declared permissions such as shell, write, network, git, secrets, docker",
+        },
+        trust_level: {
+          type: "string",
+          description: "Trust level: trusted, project, community, or unknown",
+        },
       },
       required: ["name", "description", "triggers", "steps"],
     },
@@ -260,10 +372,82 @@ export const skillTools: Tool[] = [
           items: { type: "string" },
           description: "Trigger keywords",
         },
+        dry_run: {
+          type: "boolean",
+          description: "Preview the captured skill and permission summary without writing files",
+        },
+        permissions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Declared permissions such as shell, write, network, git, secrets, docker",
+        },
+        trust_level: {
+          type: "string",
+          description: "Trust level: trusted, project, community, or unknown",
+        },
       },
       required: ["name", "workflow"],
     },
     execute: executeSkillCaptureTool,
+  },
+  {
+    name: "skill_review",
+    category: "skills",
+    description: "Review and score a skill for completeness, trigger quality, workflow steps, and quality bar.",
+    risk: "low",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Skill name to review",
+        },
+      },
+      required: ["name"],
+    },
+    execute: executeSkillReviewTool,
+  },
+  {
+    name: "skill_improve",
+    category: "skills",
+    description: "Propose or apply an improved version of a skill with version snapshot history.",
+    risk: "medium",
+    permissions: ["write"],
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Skill name to improve",
+        },
+        notes: {
+          type: "string",
+          description: "Reason or review notes to record with the improvement",
+        },
+        apply: {
+          type: "boolean",
+          description: "When true, write the improved SKILL.md and record a version snapshot. Defaults to false.",
+        },
+      },
+      required: ["name"],
+    },
+    execute: executeSkillImproveTool,
+  },
+  {
+    name: "skill_versions",
+    category: "skills",
+    description: "List recorded skill version history, optionally for one skill.",
+    risk: "low",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Optional skill name filter",
+        },
+      },
+    },
+    execute: executeSkillVersionsTool,
   },
   {
     name: "brain_query",

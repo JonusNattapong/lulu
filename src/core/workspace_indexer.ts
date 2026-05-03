@@ -298,3 +298,110 @@ export function rebuildIndex(rootDir: string = process.cwd()) {
   const elapsed = Date.now() - start;
   return { indexed: count, elapsed, db };
 }
+
+// ── File Watcher ───────────────────────────────────────────────────────────────
+
+let watcher: any = null;
+const WATCH_DEBOUNCE_MS = 2000;
+const watchTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function startWatcher(rootDir: string = process.cwd(), onIndex?: (result: { indexed: number; elapsed: number }) => void) {
+  if (watcher) {
+    console.log("[Indexer] Watcher already running");
+    return;
+  }
+
+  try {
+    const chokidar = require("chokidar");
+    const db = initDatabase();
+
+    const EXCLUDES = /node_modules|dist|build|\.git|__tests__|coverage|\.next|\.nuxt/;
+
+    watcher = chokidar.watch(rootDir, {
+      ignored: EXCLUDES,
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 },
+    });
+
+    watcher.on("add", (filePath: string) => scheduleIndex("add", filePath, rootDir, db, onIndex));
+    watcher.on("change", (filePath: string) => scheduleIndex("change", filePath, rootDir, db, onIndex));
+    watcher.on("unlink", (filePath: string) => {
+      const rel = path.relative(rootDir, filePath).replace(/\\/g, "/");
+      try {
+        db.prepare("DELETE FROM files WHERE path = ?").run(rel);
+        db.prepare("DELETE FROM symbols WHERE file = ?").run(rel);
+        db.prepare("DELETE FROM imports WHERE from_file = ?").run(rel);
+        console.log(`[Indexer] Removed ${rel} from index`);
+      } catch {}
+    });
+
+    console.log(`[Indexer] Watching ${rootDir} for changes...`);
+  } catch (err) {
+    console.error("[Indexer] Failed to start watcher (chokidar not installed):", (err as Error).message);
+  }
+}
+
+function scheduleIndex(
+  event: string,
+  filePath: string,
+  rootDir: string,
+  db: any,
+  onIndex?: (result: { indexed: number; elapsed: number }) => void,
+) {
+  const rel = path.relative(rootDir, filePath).replace(/\\/g, "/");
+  const existing = watchTimeouts.get(rel);
+  if (existing) clearTimeout(existing);
+
+  watchTimeouts.set(rel, setTimeout(() => {
+    watchTimeouts.delete(rel);
+    const start = Date.now();
+    const stats = existsSync(filePath) ? lstatSync(filePath) : null;
+    if (!stats || !stats.isFile()) return;
+
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      const hash = md5(content);
+      const language = detectLanguage(rel);
+      db.prepare(`
+        INSERT OR REPLACE INTO files (path, hash, size, mtime, language, gitStatus, lastIndexed)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(rel, hash, stats.size, stats.mtimeMs, language, getGitStatus(rel), Date.now() / 1000);
+
+      // Re-extract symbols and imports
+      db.prepare("DELETE FROM symbols WHERE file = ?").run(rel);
+      db.prepare("DELETE FROM imports WHERE from_file = ?").run(rel);
+
+      const symbols = extractSymbols(content, rel);
+      for (const s of symbols) {
+        db.prepare(`INSERT OR REPLACE INTO symbols (name, file, type, line, exported, signature) VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(s.name, rel, s.type, s.line, s.exported ? 1 : 0, s.signature);
+      }
+
+      const imports = extractImports(content);
+      for (const imp of imports) {
+        db.prepare(`INSERT OR REPLACE INTO imports (from_file, to_file, type, symbols) VALUES (?, ?, ?, ?)`)
+          .run(rel, imp.to, imp.type, JSON.stringify(imp.symbols));
+      }
+
+      const elapsed = Date.now() - start;
+      console.log(`[Indexer] ${event === "add" ? "Added" : "Updated"} ${rel} in ${elapsed}ms`);
+      if (onIndex) onIndex({ indexed: 1, elapsed });
+    } catch (err) {
+      console.error(`[Indexer] Error indexing ${rel}:`, err);
+    }
+  }, WATCH_DEBOUNCE_MS));
+}
+
+export function stopWatcher() {
+  if (!watcher) return;
+  watcher.close();
+  watcher = null;
+  for (const t of watchTimeouts.values()) clearTimeout(t);
+  watchTimeouts.clear();
+  console.log("[Indexer] Watcher stopped");
+}
+
+export function isWatcherRunning(): boolean {
+  return watcher !== null;
+}

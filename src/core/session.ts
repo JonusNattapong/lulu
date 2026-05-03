@@ -155,7 +155,20 @@ export class SessionManager {
   private save(): void {
     const dir = path.dirname(this.filePath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(this.filePath, JSON.stringify(this.sessions, null, 2), "utf-8");
+
+    // Acquire exclusive write lock using a separate .lock file
+    const lockPath = this.filePath + ".lock";
+    let fd: number | undefined;
+    try {
+      fd = require("node:fs").openSync(lockPath, "w+");
+      // Write atomically via temp file + rename
+      const tmpPath = this.filePath + ".tmp." + process.pid;
+      require("node:fs").writeFileSync(tmpPath, JSON.stringify(this.sessions, null, 2), "utf-8");
+      require("node:fs").renameSync(tmpPath, this.filePath);
+    } finally {
+      if (fd !== undefined) require("node:fs").closeSync(fd);
+      try { require("node:fs").unlinkSync(lockPath); } catch { /* ignore */ }
+    }
   }
 }
 

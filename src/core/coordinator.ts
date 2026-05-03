@@ -63,36 +63,32 @@ class CoordinatorManager {
     eventBus.emit("coordination:task:start", { taskId, subTaskCount: task.subTasks.length }, taskId);
 
     const results: string[] = [];
+
+    // Track running sub-agent promises keyed by subtask id
     const pendingById = new Map(task.subTasks.map(st => [st.id, { ...st }]));
-    const running = new Map<string, Promise<void>>();
+    const runningPromises = new Map<string, Promise<void>>();
+    const completedIds = new Set<string>();
 
     onProgress?.(`Starting orchestration of "${task.title}" with ${task.subTasks.length} sub-tasks`);
 
-    // Topological sort: tasks with no dependencies first, then those whose deps are done
-    const spawnNext = async (): Promise<void> => {
-      for (const [id, st] of pendingById) {
-        if (st.status !== "pending") continue;
-        const depsDone = st.dependsOn.every(depId => {
-          const dep = pendingById.get(depId);
-          return dep && (dep.status === "done" || dep.status === "failed");
-        });
-        if (!depsDone) continue;
+    const spawnSubAgent = async (st: typeof task.subTasks[0]): Promise<void> => {
+      onProgress?.(`Spawning sub-agent for: ${st.title}`);
+      const agentId = await subAgentManager.spawn({
+        parentId: taskId,
+        name: st.title,
+        prompt: st.prompt,
+        config,
+        maxRounds: 10,
+        timeout: 120_000,
+      });
 
-        onProgress?.(`Spawning sub-agent for: ${st.title}`);
-        const agentId = await subAgentManager.spawn({
-          parentId: taskId,
-          name: st.title,
-          prompt: st.prompt,
-          config,
-          maxRounds: 10,
-          timeout: 120_000,
-        });
+      st.agentId = agentId;
+      st.status = "running";
+      pendingById.set(st.id, st);
 
-        st.agentId = agentId;
-        st.status = "running";
-        pendingById.set(id, st);
-
-        const waitPromise = (async () => {
+      // Track the promise
+      const waitPromise = (async () => {
+        try {
           const result = await subAgentManager.collect([agentId], 120_000);
           const res = result.get(agentId);
           st.result = res;
@@ -105,36 +101,47 @@ class CoordinatorManager {
             st.endedAt = new Date().toISOString();
             onProgress?.(`Sub-agent failed: ${st.title}`);
           }
-          pendingById.set(id, st);
-        })();
+        } finally {
+          completedIds.add(st.id);
+          pendingById.set(st.id, st);
+          runningPromises.delete(st.id);
+        }
+      })();
 
-        running.set(id, waitPromise);
-      }
+      runningPromises.set(st.id, waitPromise);
     };
 
-    // Keep spawning until all tasks are done
+    // Run spawn loop with polling
     while (true) {
-      await spawnNext();
-
-      const pending = Array.from(pendingById.values()).filter(st => st.status === "pending");
-      const runningNow = Array.from(running.values()).filter(p => (p as any).status !== "resolved");
-
-      if (pending.length === 0 && runningNow.length === 0) break;
-
-      // Wait for at least one to finish
-      if (runningNow.length > 0) {
-        await Promise.race(runningNow);
-        // Remove resolved
-        for (const [id, p] of running) {
-          if ((p as any).status !== "pending") running.delete(id);
+      // Spawn any pending tasks whose deps are all done
+      for (const [id, st] of pendingById) {
+        if (st.status !== "pending") continue;
+        const depsDone = st.dependsOn.every(depId => {
+          const dep = pendingById.get(depId);
+          return dep && (dep.status === "done" || dep.status === "failed");
+        });
+        if (depsDone) {
+          await spawnSubAgent(st);
         }
-      } else {
-        await new Promise(r => setTimeout(r, 500));
       }
+
+      // If nothing is running and nothing can spawn, we're done
+      if (runningPromises.size === 0) {
+        const stillPending = Array.from(pendingById.values()).some(st => st.status === "pending");
+        if (!stillPending) break;
+        // Deadlock: pending tasks but deps never resolve
+        onProgress?.("Deadlock detected: remaining tasks have unresolved dependencies");
+        break;
+      }
+
+      // Wait for at least one running task to finish
+      const runningArr = Array.from(runningPromises.values());
+      await Promise.race(runningArr);
     }
 
     // Wait for remaining promises
-    await Promise.allSettled(running.values());
+    await Promise.allSettled(runningPromises.values());
+    runningPromises.clear();
 
     // Aggregate results
     for (const st of task.subTasks) {

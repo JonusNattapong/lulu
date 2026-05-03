@@ -24,7 +24,7 @@ export const schedulerTools = [
     execute: async () => {
       const jobs = manager().status();
       if (!jobs.length) return "No scheduled jobs.";
-      return jobs.map(j => `• ${j.id}: ${j.status} | next: ${j.nextRun || "?"} | last: ${j.lastRun || "never"}`).join("\n");
+      return jobs.map(j => `• ${j.id}: ${j.status} | priority: ${j.priority} | retry: ${j.retryCount}/${j.maxRetries} | next: ${j.nextRun || "?"} | last: ${j.lastRun || "never"}`).join("\n");
     },
   },
   {
@@ -76,7 +76,9 @@ export const schedulerTools = [
       const runner = getJobRunner(job);
       if (!runner) return `Runner not found for: ${job.handler}. Available: ${Object.keys(jobRunners).join(", ")}`;
       const result = await manager().runNow(job_id, runner);
-      return result.success ? `✅ Job completed:\n${result.output}` : `❌ Job failed:\n${result.output}`;
+      if (result.success) return `✅ Job completed:\n${result.output}`;
+      const retry = result.nextRetryAt ? `\nRetry scheduled: ${result.nextRetryAt}` : "";
+      return `❌ Job failed:${retry}\n${result.output}`;
     },
   },
   {
@@ -96,7 +98,30 @@ export const schedulerTools = [
       return history.map(h => {
         const ts = new Date(h.start).toLocaleString();
         const status = h.success ? "✅" : "❌";
-        return `${status} ${h.jobId} at ${ts}${h.error ? ` — ${h.error.slice(0, 80)}` : ""}`;
+        const duration = h.durationMs !== undefined ? ` (${h.durationMs}ms)` : "";
+        const retry = h.nextRetryAt ? ` | retry: ${h.nextRetryAt}` : "";
+        return `${status} ${h.jobId} attempt ${h.attempt} at ${ts}${duration}${retry}${h.error ? ` — ${h.error.slice(0, 80)}` : ""}`;
+      }).join("\n");
+    },
+  },
+  {
+    name: "scheduler_logs",
+    description: "View structured scheduler job logs",
+    category: "scheduler",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string", description: "Optional: filter by job ID" },
+        limit: { type: "number", description: "Max log entries (default 20)" },
+      },
+    },
+    execute: async ({ job_id, limit = 20 }: { job_id?: string; limit?: number }) => {
+      const logs = manager().logs(job_id, limit);
+      if (!logs.length) return "No scheduler logs.";
+      return logs.map((l) => {
+        const ts = new Date(l.timestamp).toLocaleString();
+        const attempt = l.attempt ? ` attempt ${l.attempt}` : "";
+        return `[${ts}] ${l.level.toUpperCase()} ${l.jobId}${attempt}: ${l.message}`;
       }).join("\n");
     },
   },

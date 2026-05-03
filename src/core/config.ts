@@ -4,6 +4,7 @@ import path from "path";
 import type { AgentConfig, ModelProvider, MCPServer } from "../types/types.js";
 import { buildSystemPrompt, type PromptBuildResult } from "./prompt.js";
 import { initSecrets, registerSecret } from "./secrets.js";
+import { detectProject } from "./project.js";
 
 export const PROVIDERS_DATA = JSON.parse(
   readFileSync(new URL("../providers/providers.json", import.meta.url), "utf-8"),
@@ -100,23 +101,6 @@ export function _parsePositiveInt(value: string | undefined, fallback: number): 
 }
 export function _loadClaudeConfigKeys(): Record<string, string> { return loadClaudeConfigKeys(); }
 export function _loadMCPServers(): MCPServer[] { return loadMCPServers(); }
-
-export function detectProject(): { projectName: string; projectRoot: string } {
-  const projectRoot = process.cwd();
-  let projectName = path.basename(projectRoot);
-
-  try {
-    const pkgPath = path.join(projectRoot, "package.json");
-    if (existsSync(pkgPath)) {
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-      if (pkg.name) projectName = pkg.name;
-    }
-  } catch {
-    // Ignore
-  }
-
-  return { projectName, projectRoot };
-}
 
 export function loadPromptBuild(env: NodeJS.ProcessEnv = process.env): PromptBuildResult {
   const { projectName, projectRoot } = detectProject();

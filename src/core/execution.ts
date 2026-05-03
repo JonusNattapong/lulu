@@ -32,7 +32,8 @@ class LocalBackend implements ExecutionBackend {
         proc.kill("SIGKILL");
       }, timeout);
 
-      const proc = spawn("/bin/sh", ["-c", req.command], {
+      const shellCmd = process.platform === "win32" ? "cmd" : "/bin/sh";
+      const proc = spawn(shellCmd, process.platform === "win32" ? ["/c", req.command] : ["-c", req.command], {
         cwd: req.cwd,
         env: { ...process.env, ...(req.env || {}) },
         stdio: ["pipe", "pipe", "pipe"],
@@ -112,7 +113,7 @@ class DockerBackend implements ExecutionBackend {
     eventBus.emit("exec:start", { id, backend: this.type, command: req.command }, id);
 
     const image = (req.env as any)?.LULU_DOCKER_IMAGE || "ubuntu:22.04";
-    const args = ["run", "--rm", "-i", `--entrypoint=/bin/sh`, image, "-c", req.command];
+    const args = ["run", "--rm", "-i", "--entrypoint=/bin/sh", image, "-c", req.command];
 
     return new Promise((resolve) => {
       const timeout = req.timeout ?? 120_000;
@@ -306,16 +307,17 @@ class SSHBackend implements ExecutionBackend {
 
     eventBus.emit("exec:start", { id, backend: this.type, command: req.command, host }, id);
 
+    const sshCmd = `ssh ${user}@${host} ${req.command}`;
+    const shellCmd = process.platform === "win32" ? "cmd" : "/bin/sh";
+    const proc = spawn(shellCmd, process.platform === "win32" ? ["/c", sshCmd] : ["-c", sshCmd], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
     return new Promise((resolve) => {
-      const sshCmd = `ssh ${user}@${host} ${req.command}`;
       const timeout = req.timeout ?? 120_000;
       const timer = setTimeout(() => {
         proc.kill("SIGKILL");
       }, timeout);
-
-      const proc = spawn("/bin/sh", ["-c", sshCmd], {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
 
       let stdout = "";
       let stderr = "";

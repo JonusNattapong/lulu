@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { execSync } from "node:child_process";
 import { eventBus } from "./events.js";
 import type { NotificationPayload } from "../types/types.js";
 
@@ -57,7 +56,6 @@ class NotificationManager {
     if (!cred?.botToken || !cred?.chatId) return;
 
     const emoji = priority === "high" ? "🚨" : priority === "medium" ? "⚠️" : "🔔";
-    const url = `https://api.telegram.org/bot${cred.botToken}/sendMessage`;
     const body = JSON.stringify({
       chat_id: cred.chatId,
       text: `${emoji} ${message}`,
@@ -65,12 +63,14 @@ class NotificationManager {
     });
 
     try {
-      execSync(
-        `curl -s -X POST ${url} -H "Content-Type: application/json" -d '${body.replace(/'/g, "'\"'\"'")}'`,
-        { encoding: "utf-8", stdio: "pipe", timeout: 10_000 }
-      );
+      await fetch(`https://api.telegram.org/bot${cred.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        signal: AbortSignal.timeout(10_000),
+      });
     } catch {
-      // Silently fail if Telegram not configured
+      // Silently fail if Telegram not configured or unreachable
     }
   }
 

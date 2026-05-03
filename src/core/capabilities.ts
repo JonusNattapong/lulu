@@ -23,6 +23,10 @@ function tryCommand(cmd: string, args: string[] = []): { ok: boolean; output?: s
     if (result.status === 0 && result.stdout) {
       return { ok: true, output: result.stdout.toString().trim() };
     }
+    // spawnSync didn't succeed — only try shell exec if command was not found at all
+    if (result.error?.message?.includes('ENOENT') || !which(cmd)) {
+      return { ok: false };
+    }
     const shellResult = execSync(`${cmd} ${args.join(' ')}`, { stdio: ['pipe','pipe','pipe'], timeout: 2000 });
     return { ok: true, output: shellResult.toString().trim() };
   } catch {

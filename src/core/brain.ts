@@ -5,6 +5,11 @@ import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { getEmbedding } from "../providers/providers.js";
 import type { AgentConfig } from "../types/types.js";
+import { globalMemory } from "./global-memory.js";
+import { MemoryManager } from "./memory.js";
+import { SessionManager, type SessionRecord } from "./session.js";
+import { loadAllSkills } from "./skills.js";
+import { readGlobalSoulFiles, readSoulFiles } from "./soul.js";
 
 export interface Entity {
   id: string;
@@ -44,6 +49,9 @@ export interface BrainQueryResult {
   page: BrainPage;
   score: number;
   highlights: string[];
+  source?: "brain" | "soul" | "skill" | "memory" | "global-memory" | "session" | "graph";
+  sourcePath?: string;
+  metadata?: Record<string, any>;
 }
 
 export class Brain {
@@ -136,6 +144,8 @@ export class Brain {
       CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(type);
     `);
 
+    this.initFullTextSearch();
+
     // Try to load vec0 extension, but continue without it
     let vecAvailable = false;
     try {
@@ -151,6 +161,45 @@ export class Brain {
       console.log("[Brain] Vector search unavailable, using keyword fallback");
     }
     (this as any)._vecAvailable = vecAvailable;
+  }
+
+  private initFullTextSearch(): void {
+    try {
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
+          title,
+          content,
+          tags,
+          citations,
+          content='pages',
+          content_rowid='rowid',
+          tokenize='unicode61'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS pages_ai AFTER INSERT ON pages BEGIN
+          INSERT INTO pages_fts(rowid, title, content, tags, citations)
+          VALUES (new.rowid, new.title, new.content, new.tags, new.citations);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS pages_ad AFTER DELETE ON pages BEGIN
+          INSERT INTO pages_fts(pages_fts, rowid, title, content, tags, citations)
+          VALUES ('delete', old.rowid, old.title, old.content, old.tags, old.citations);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS pages_au AFTER UPDATE ON pages BEGIN
+          INSERT INTO pages_fts(pages_fts, rowid, title, content, tags, citations)
+          VALUES ('delete', old.rowid, old.title, old.content, old.tags, old.citations);
+          INSERT INTO pages_fts(rowid, title, content, tags, citations)
+          VALUES (new.rowid, new.title, new.content, new.tags, new.citations);
+        END;
+      `);
+
+      this.db.exec("INSERT INTO pages_fts(pages_fts) VALUES ('rebuild')");
+      (this as any)._ftsAvailable = true;
+    } catch (err) {
+      (this as any)._ftsAvailable = false;
+      console.error("[Brain] SQLite FTS5 unavailable, using LIKE fallback:", (err as Error).message);
+    }
   }
 
   // Page operations
@@ -288,10 +337,10 @@ export class Brain {
           score: 1 - (row.distance || 0),
           highlights: this.extractHighlights(row.content, query),
         }));
-      } catch {
-        // Fallback to keyword search
-        return this.keywordSearch(query, limit);
-      }
+	      } catch {
+	        // Fallback to SQLite FTS5 / keyword search
+	        return this.keywordSearch(query, limit);
+	      }
     } catch (err) {
       console.error("[Brain] Query failed:", err);
       return this.keywordSearch(query, limit);
@@ -468,37 +517,90 @@ export class Brain {
     // 3. Graph traversal (find connected pages)
     const graphResults = await this.graphSearch(query, limit * 2);
 
+    // 4. Federated persistent knowledge search
+    const federatedResults = await this.federatedSearch(config, query, limit * 3);
+
     // Combine scores
-    const scoreMap = new Map<string, { page: BrainPage; score: number; sources: string[] }>();
+    const scoreMap = new Map<string, { result: BrainQueryResult; score: number; sources: string[] }>();
 
     for (const r of vectorResults) {
-      const existing = scoreMap.get(r.page.slug) || { page: r.page, score: 0, sources: [] };
+      const existing = scoreMap.get(r.page.slug) || { result: { ...r, source: r.source || "brain" }, score: 0, sources: [] };
       existing.score += r.score * vectorWeight;
       existing.sources.push("vector");
       scoreMap.set(r.page.slug, existing);
     }
 
     for (const r of keywordResults) {
-      const existing = scoreMap.get(r.page.slug) || { page: r.page, score: 0, sources: [] };
+      const existing = scoreMap.get(r.page.slug) || { result: { ...r, source: r.source || "brain" }, score: 0, sources: [] };
       existing.score += r.score * keywordWeight;
       existing.sources.push("keyword");
       scoreMap.set(r.page.slug, existing);
     }
 
     for (const r of graphResults) {
-      const existing = scoreMap.get(r.page.slug) || { page: r.page, score: 0, sources: [] };
+      const existing = scoreMap.get(r.page.slug) || { result: { ...r, source: r.source || "graph" }, score: 0, sources: [] };
       existing.score += r.score * graphWeight;
       existing.sources.push("graph");
+      scoreMap.set(r.page.slug, existing);
+    }
+
+    for (const r of federatedResults) {
+      const existing = scoreMap.get(r.page.slug) || { result: r, score: 0, sources: [] };
+      existing.score += r.score;
+      existing.sources.push(r.source || "federated");
+      if (r.highlights.length > existing.result.highlights.length) {
+        existing.result.highlights = r.highlights;
+      }
       scoreMap.set(r.page.slug, existing);
     }
 
     return Array.from(scoreMap.values())
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
-      .map((r) => ({ ...r, highlights: [] }));
+      .map((r) => ({
+        ...r.result,
+        score: r.score,
+        metadata: { ...(r.result.metadata || {}), matchedSources: r.sources },
+      }));
   }
 
   private keywordSearch(query: string, limit: number): BrainQueryResult[] {
+    const ftsQuery = this.toFtsQuery(query);
+    if ((this as any)._ftsAvailable && ftsQuery) {
+      try {
+        const rows = this.db
+          .prepare(
+            `SELECT
+               p.*,
+               bm25(pages_fts, 8.0, 2.0, 1.0, 1.0) AS rank,
+               snippet(pages_fts, 1, '', '', ' ... ', 24) AS snippet
+             FROM pages_fts
+             JOIN pages p ON p.rowid = pages_fts.rowid
+             WHERE pages_fts MATCH ?
+             ORDER BY rank
+             LIMIT ?`
+          )
+          .all(ftsQuery, limit) as any[];
+
+        return rows.map((row) => {
+          const rank = typeof row.rank === "number" ? row.rank : 0;
+          return {
+            page: this.getPage(row.slug)!,
+            score: Math.max(0.1, 1 / (1 + Math.abs(rank))),
+            highlights: row.snippet ? [row.snippet] : this.extractHighlights(row.content, query),
+            source: "brain" as const,
+            metadata: { search: "sqlite-fts5", rank },
+          };
+        });
+      } catch (err) {
+        console.error("[Brain] SQLite FTS5 search failed, using LIKE fallback:", (err as Error).message);
+      }
+    }
+
+    return this.likeSearch(query, limit);
+  }
+
+  private likeSearch(query: string, limit: number): BrainQueryResult[] {
     const words = query
       .toLowerCase()
       .split(/\s+/)
@@ -516,7 +618,16 @@ export class Brain {
       page: this.getPage(row.slug)!,
       score: 0.5,
       highlights: this.extractHighlights(row.content, query),
+      source: "brain" as const,
+      metadata: { search: "like" },
     }));
+  }
+
+  private toFtsQuery(query: string): string {
+    const terms = this.searchTerms(query)
+      .map((term) => term.replace(/"/g, ""))
+      .filter(Boolean);
+    return terms.map((term) => `"${term}"`).join(" OR ");
   }
 
   private async graphSearch(query: string, limit: number): Promise<BrainQueryResult[]> {
@@ -556,6 +667,7 @@ export class Brain {
               page: { id: "", slug: "", title: relatedEntity.name, content: relatedEntity.summary || "", entities: [], outgoingLinks: [], incomingLinks: [], citations: [], tags: [], createdAt: "", updatedAt: "" },
               score: 0.2,
               highlights: [],
+              source: "graph",
             });
           }
         }
@@ -563,6 +675,178 @@ export class Brain {
     }
 
     return results.slice(0, limit);
+  }
+
+  private async federatedSearch(config: AgentConfig, query: string, limit: number): Promise<BrainQueryResult[]> {
+    const results: BrainQueryResult[] = [];
+    const projectRoot = config.projectRoot || process.cwd();
+
+    for (const file of [...readSoulFiles(projectRoot), ...readGlobalSoulFiles()]) {
+      const score = this.scoreText(query, `${file.name}\n${file.content}`);
+      if (score <= 0) continue;
+      results.push({
+        page: this.virtualPage(`soul:${file.path}`, file.name, file.content, ["soul"]),
+        score: score * 0.95,
+        highlights: this.extractHighlights(file.content, query),
+        source: "soul",
+        sourcePath: file.path,
+        metadata: { mtime: file.mtime, size: file.size },
+      });
+    }
+
+    const skills = loadAllSkills(projectRoot);
+    for (const skill of skills) {
+      const content = [
+        skill.description,
+        skill.triggers.join(", "),
+        skill.qualityBar,
+        skill.steps.join("\n"),
+        skill.content,
+      ].filter(Boolean).join("\n");
+      const score = this.scoreText(query, `${skill.name}\n${skill.category}\n${content}`);
+      if (score <= 0) continue;
+      results.push({
+        page: this.virtualPage(`skill:${skill.source}`, `Skill: ${skill.name}`, content, ["skill", skill.category]),
+        score: score * 0.9,
+        highlights: this.extractHighlights(content, query),
+        source: "skill",
+        sourcePath: skill.source,
+        metadata: { category: skill.category, triggers: skill.triggers },
+      });
+    }
+
+    try {
+      const memory = new MemoryManager(config.projectName || this.projectName);
+      const memories = await memory.search(config, query, limit);
+      for (const entry of memories) {
+        const score = this.scoreText(query, entry.content) || 0.65;
+        results.push({
+          page: this.virtualPage(`memory:${entry.content.slice(0, 40)}`, "Project Memory", entry.content, ["memory"]),
+          score: score * 0.85,
+          highlights: this.extractHighlights(entry.content, query),
+          source: "memory",
+          metadata: { rawMetadata: entry.metadata },
+        });
+      }
+      memory.close();
+    } catch (err) {
+      console.error("[Brain] Project memory search failed:", err);
+    }
+
+    for (const fact of globalMemory.search(query, limit)) {
+      const content = `${fact.key}: ${fact.value}`;
+      const score = this.scoreText(query, content) || 0.6;
+      results.push({
+        page: this.virtualPage(`global-memory:${fact.id}`, `Global Memory: ${fact.key}`, content, ["global-memory", fact.category, ...fact.tags]),
+        score: score * 0.8,
+        highlights: this.extractHighlights(content, query),
+        source: "global-memory",
+        metadata: { category: fact.category, confidence: fact.confidence, updatedAt: fact.updatedAt },
+      });
+    }
+
+    for (const todo of globalMemory.listTodos(true)) {
+      const content = `${todo.done ? "Done" : "Open"} ${todo.priority} todo: ${todo.text}`;
+      const score = this.scoreText(query, content);
+      if (score <= 0) continue;
+      results.push({
+        page: this.virtualPage(`global-memory:${todo.id}`, `Todo: ${todo.text.slice(0, 60)}`, content, ["global-memory", "todo", todo.priority]),
+        score: score * 0.7,
+        highlights: this.extractHighlights(content, query),
+        source: "global-memory",
+        metadata: { priority: todo.priority, done: todo.done },
+      });
+    }
+
+    const sessions = new SessionManager().list();
+    for (const session of sessions) {
+      if (config.projectName && session.projectName && session.projectName !== config.projectName) continue;
+      const content = this.sessionToSearchText(session);
+      const score = this.scoreText(query, content);
+      if (score <= 0) continue;
+      results.push({
+        page: this.virtualPage(`session:${session.id}`, `Session: ${session.title}`, content, ["session", session.channel]),
+        score: score * 0.75,
+        highlights: this.extractHighlights(content, query),
+        source: "session",
+        metadata: { id: session.id, channel: session.channel, updatedAt: session.updatedAt, turns: session.turnCount },
+      });
+    }
+
+    return results
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }
+
+  private virtualPage(idSeed: string, title: string, content: string, tags: string[]): BrainPage {
+    const now = new Date().toISOString();
+    return {
+      id: this.stableId(idSeed),
+      slug: this.toSlug(idSeed).slice(0, 96) || this.stableId(idSeed),
+      title,
+      content,
+      entities: [],
+      outgoingLinks: [],
+      incomingLinks: [],
+      citations: [],
+      tags,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private scoreText(query: string, text: string): number {
+    const normalizedQuery = query.toLowerCase().trim();
+    const normalizedText = text.toLowerCase();
+    if (!normalizedQuery) return 0;
+
+    let score = normalizedText.includes(normalizedQuery) ? 6 : 0;
+    const terms = this.searchTerms(query);
+    if (terms.length === 0) return score;
+
+    for (const term of terms) {
+      if (normalizedText.includes(term)) score += term.length > 4 ? 2 : 1;
+    }
+
+    return score / Math.max(terms.length, 1);
+  }
+
+  private searchTerms(query: string): string[] {
+    const matches = query.toLowerCase().match(/[\p{L}\p{N}_-]+/gu) || [];
+    return Array.from(new Set(matches.filter((term) => term.length >= 2)));
+  }
+
+  private sessionToSearchText(session: SessionRecord): string {
+    const messages = session.messages
+      .map((message) => {
+        const content = (message as any).content;
+        if (typeof content === "string") return `${message.role}: ${content}`;
+        if (Array.isArray(content)) {
+          return `${message.role}: ${content.map((part) => {
+            if (typeof part === "string") return part;
+            if (part?.type === "text") return part.text;
+            return "";
+          }).filter(Boolean).join(" ")}`;
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    return [
+      session.title,
+      session.projectName,
+      session.channel,
+      messages,
+    ].filter(Boolean).join("\n").slice(0, 12_000);
+  }
+
+  private stableId(input: string): string {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+      hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+    }
+    return `virtual-${Math.abs(hash).toString(36)}`;
   }
 
   // Signal detector: extract entities from text
@@ -628,10 +912,9 @@ export class Brain {
 
   // Statistics
   getStats(): { pages: number; entities: number; relationships: number } {
-    const pages = (this.db.prepare("SELECT COUNT(*) as count").get() as any).count;
-    const entities = (this.db.prepare("SELECT COUNT(*) as count").get() as any).count;
-    const relationships = (this.db.prepare("SELECT COUNT(*) as count").get() as any).count;
-
+    const pages = (this.db.prepare("SELECT COUNT(*) as count FROM pages").get() as any).count;
+    const entities = (this.db.prepare("SELECT COUNT(*) as count FROM entities").get() as any).count;
+    const relationships = (this.db.prepare("SELECT COUNT(*) as count FROM relationships").get() as any).count;
     return { pages, entities, relationships };
   }
 
@@ -640,14 +923,14 @@ export class Brain {
   }
 }
 
-// Singleton for quick access
-let brainInstance: Brain | null = null;
+// Map of project-specific brain instances
+const brainInstances = new Map<string, Brain>();
 
 export function getBrain(projectName?: string): Brain {
-  if (!brainInstance) {
-    const projectDir = path.join(process.cwd(), "package.json");
-    const name = projectName || (existsSync(projectDir) ? JSON.parse(readFileSync(projectDir, "utf-8")).name || "default" : "default");
-    brainInstance = new Brain(name);
+  const projectDir = path.join(process.cwd(), "package.json");
+  const key = projectName || (existsSync(projectDir) ? JSON.parse(readFileSync(projectDir, "utf-8")).name || "default" : "default");
+  if (!brainInstances.has(key)) {
+    brainInstances.set(key, new Brain(key));
   }
-  return brainInstance;
+  return brainInstances.get(key)!;
 }

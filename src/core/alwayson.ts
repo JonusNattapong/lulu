@@ -102,25 +102,41 @@ class AlwaysOnService {
     const scheduler = new SchedulerManager();
     const dueJobs = scheduler.getDueJobs();
 
-    for (const job of dueJobs) {
+    // Re-scan for any new job files
+    scheduler.scanJobsDir();
+    const freshDue = scheduler.getDueJobs();
+
+    // Merge and deduplicate (prefer fresh due list)
+    const seen = new Set<string>();
+    const toRun = [];
+    for (const job of [...freshDue, ...dueJobs]) {
+      if (!seen.has(job.id)) {
+        seen.add(job.id);
+        toRun.push(job);
+      }
+    }
+
+    for (const job of toRun) {
+      // If autoTasks is configured, only run whitelisted jobs
       if (this.config.autoTasks.length > 0 && !this.config.autoTasks.includes(job.id)) continue;
 
       try {
-        // Run job via scheduler's built-in runner
-        const { runHeartbeatOnce } = await import("./heartbeat.js");
-        const results = await runHeartbeatOnce(scheduler);
-        for (const result of results) {
-          this.tasksRun++;
-          if (this.config.notifications.telegram) {
-            this.notificationsSent++;
-            await notificationManager.send({
-              title: `Scheduled Job: ${job.name}`,
-              body: result,
-              source: "scheduler",
-              priority: result.includes("failed") ? "medium" : "low",
-              timestamp: new Date().toISOString(),
-            });
-          }
+        const { getJobRunner } = await import("./job_runners.js");
+        const runner = getJobRunner(job);
+        if (!runner) continue;
+
+        const output = await scheduler.runNow(job.id, runner);
+        this.tasksRun++;
+
+        if (this.config.notifications.telegram) {
+          this.notificationsSent++;
+          await notificationManager.send({
+            title: `Scheduled Job: ${job.name}`,
+            body: output.success ? output.output : `Failed: ${output.output}`,
+            source: "scheduler",
+            priority: output.success ? "low" : "medium",
+            timestamp: new Date().toISOString(),
+          });
         }
       } catch (err: any) {
         if (this.config.notifications.telegram) {
