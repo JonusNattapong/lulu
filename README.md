@@ -1,17 +1,12 @@
+<p align="center">
+  <img src="./public/logo.png" width="320" alt="Lulu AI Logo">
+</p>
+
 # Lulu AI
 
 Lulu is a personal AI agent that learns your preferences, maintains context across sessions, and acts proactively on your behalf. It runs as a persistent daemon — always-on, always learning. Lulu provides a shared agent runtime across CLI, local API, web dashboard, desktop app, and Telegram.
 
 Lulu is designed to learn your preferences, maintain both project-scoped and cross-session context, use tools through a policy layer, and persist useful state in `~/.lulu`. Over time, it becomes genuinely useful — not just reactive, but proactive.
-
-```
-  _      _    _   _      _    _
- | |    | |  | | | |    | |  | |
- | |    | |  | | | |    | |  | |
- | |____| |__| | | |____| |__| |
- |______|______| |______|______|
-       v0.0.7
-```
 
 ## Features
 
@@ -464,6 +459,7 @@ Every loaded skill now carries safety metadata:
 - audit event: skill writes are recorded as `skill_event` entries in the project audit log
 
 **Skill Storage:**
+
 ```
 ~/.lulu/skills/                    # Global skills
   resolver.md                      # Skill routing rules
@@ -489,6 +485,7 @@ Every loaded skill now carries safety metadata:
 | operational | deploy, docker, docker-ops, smoke-test |
 
 **Skill Commands:**
+
 ```sh
 /skills list           # List all skills
 /skills search <query> # Search skills
